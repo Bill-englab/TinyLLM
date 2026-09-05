@@ -7,11 +7,11 @@ context: |
   目标: 在消费级硬件(RTX 3070 8GB + WSL2)上系统学习 LLM 推理优化的
     全流程:部署 → 量化 → 推理优化 → 高级监控 → 生产部署。
 
-  阶段路线(见 code/学习路线图.md):
+  阶段路线(见 docs/plans/学习路线图.md):
     - 阶段1 deployment: 模型部署(Gradio + 监控) — 已完成
     - 阶段1.5 environment_setup: WSL2 + vLLM 环境(349.6 tok/s) — 已完成
     - 阶段2 quantization: bnb/GPTQ 量化(4.72x 压缩) — 已完成
-    - 阶段3 optimization: 推理优化(vLLM+GPTQ/FlashAttention/投机采样) — 进行中
+    - 阶段3 optimization: 推理优化,6 模块(测量基础/KV cache/量化x引擎/引擎内部/kernel/投机采样) — 进行中
     - 阶段4 advanced_monitoring / 阶段5 production — 计划中
 
   技术栈: Python 3.10 (conda: inference_opt) / PyTorch 2.12 + CUDA 13.0 /
@@ -21,7 +21,10 @@ context: |
   约定:
     - 每个学习阶段一个目录: code/<阶段名>/{apps,experiments,benchmarks,scripts,docs,logs}
     - 目录规范见 skill/stage-organization/references/directory-structure.md
-    - 阶段完成必须产出: 技术博客(docs/NN-主题篇.md) + 学习记录 + 检查清单
+    - 阶段完成必须产出: 技术博客(docs/NN-主题篇.md) + 学习记录 + 检查清单,
+      并更新 docs/progress/PROGRESS.md 与 docs/INDEX.md
+    - 文档四层体系: 计划 docs/plans/ · 进度 docs/progress/ ·
+      说明 docs/*.md + code/<stage>/docs/ · 规格 openspec/
     - 文档语言: 中文;代码注释: 中文为主
     - 提交信息: 中文,conventional commits 风格(chore/docs/feat/...)
     - 模型文件不入库(code/model/ 已 gitignore),获取方式见 code/model/README.md

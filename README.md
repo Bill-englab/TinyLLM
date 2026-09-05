@@ -20,11 +20,13 @@
 | 1 | 模型部署(Gradio + GPU 监控) | ✅ 完成 | [code/deployment](code/deployment/) | [01-模型部署篇](docs/01-模型部署篇.md) |
 | 1.5 | 推理环境搭建(WSL2 + vLLM) | ✅ 完成 | [code/environment_setup](code/environment_setup/) | [02-环境搭建篇](docs/02-AI推理优化环境搭建篇.md) |
 | 2 | 模型量化(bnb + GPTQ) | ✅ 完成 | [code/quantization](code/quantization/) | [03-模型量化篇](docs/03-模型量化篇.md) |
-| 3 | 推理优化(vLLM+GPTQ / FlashAttention / 投机采样) | 🔜 进行中 | — | — |
+| 3 | 推理优化(6 模块:测量基础/KV cache/量化×引擎/引擎内部/kernel/投机采样) | 🔜 进行中 | — | — |
 | 4 | 高级监控(指标采集 / 告警 / 仪表盘) | ⏳ 计划 | — | — |
 | 5 | 生产部署(FastAPI / 容器化 / 负载均衡) | ⏳ 计划 | — | — |
 
-完整规划见 [code/学习路线图.md](code/学习路线图.md)。
+完整规划见 [docs/plans/学习路线图.md](docs/plans/学习路线图.md),
+阶段 3 执行计划见 [docs/plans/stage-3-推理优化.md](docs/plans/stage-3-推理优化.md),
+当前进度见 [docs/progress/PROGRESS.md](docs/progress/PROGRESS.md)。
 
 ## 🚀 快速开始
 
@@ -61,12 +63,18 @@ TinyLLM/
 │   ├── environment_setup/ #   阶段1.5:推理环境
 │   ├── quantization/      #   阶段2:模型量化
 │   └── model/             #   模型文件(不入库,获取方式见其 README)
-├── docs/                  # 技术博客(每阶段一篇)
+├── docs/                  # 文档体系(总索引见 docs/INDEX.md)
+│   ├── INDEX.md           #   总索引(按类型+按阶段)
+│   ├── plans/             #   计划层(路线图+阶段计划)
+│   ├── progress/          #   进度层(PROGRESS 看板)
+│   └── 01~03-*.md         #   技术博客(每阶段一篇)
 ├── openspec/              # OpenSpec 变更管理(proposal → tasks → archive)
 ├── skill/                 # 阶段整理工作流(自定义 skill)
 ├── README.md / 快速入门.md / 项目结构说明.md
 └── inference_environment_summary.md
 ```
+
+📚 **全部文档从 [docs/INDEX.md](docs/INDEX.md) 出发索引**。
 
 ## 🔄 工作流
 

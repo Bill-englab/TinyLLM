@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TinyLLM · AI Infra 课程进度台</title>
+<style>
+:root{
+  --bg:#f4f6f9; --card:#ffffff; --ink:#1e293b; --sub:#64748b;
+  --accent:#2563eb; --accent-soft:#dbeafe;
+  --done:#16a34a; --done-soft:#dcfce7;
+  --active:#f59e0b; --line:#e2e8f0; --chip:#f1f5f9;
+  --core:#7c3aed; --core-soft:#ede9fe;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--ink);line-height:1.6;padding-bottom:80px}
+.wrap{max-width:980px;margin:0 auto;padding:0 16px}
+header{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:12px 0}
+.hd{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hd h1{font-size:18px;font-weight:700}
+.hd .sub{font-size:12px;color:var(--sub)}
+.hd-right{margin-left:auto;display:flex;gap:8px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 14px;
+  font-size:13px;cursor:pointer;color:var(--ink)}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.totalbar{margin-top:10px}
+.bar{height:8px;background:var(--chip);border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--done));
+  border-radius:99px;transition:width .4s}
+.totalbar .txt{font-size:12px;color:var(--sub);margin-top:4px;display:flex;justify-content:space-between}
+section{margin-top:26px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+/* hero 当前位置 */
+#hero .tag{font-size:12px;color:var(--accent);font-weight:600;letter-spacing:.1em}
+#hero .now{font-size:20px;font-weight:700;margin:6px 0 4px}
+#hero .desc{font-size:13px;color:var(--sub)}
+#hero .acts{margin-top:10px;font-size:13px;color:var(--ink)}
+/* 地图 */
+.mapgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px}
+.pcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;
+  cursor:pointer;transition:transform .15s,box-shadow .15s;position:relative}
+.pcard:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(30,41,59,.08)}
+.pcard .pt{font-size:13px;font-weight:700}
+.pcard .pg{font-size:11px;color:var(--sub);margin:2px 0 8px;min-height:28px}
+.pcard .bar{height:6px}
+.pcard .cnt{font-size:11px;color:var(--sub);margin-top:4px}
+.pcard.st-done{border-color:var(--done)} .pcard.st-done .pt{color:var(--done)}
+.pcard.st-act{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.pcard .st{position:absolute;top:10px;right:12px;font-size:11px;font-weight:700}
+.st-done .st{color:var(--done)} .st-act .st{color:var(--accent)}
+/* 篇 section */
+.part-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:34px 0 12px}
+.part-head .pn{font-size:13px;font-weight:800;color:#fff;background:var(--accent);
+  border-radius:8px;padding:2px 10px}
+.part-head h2{font-size:17px;font-weight:800}
+.part-head .pinfo{font-size:12px;color:var(--sub)}
+.part-head .pbar{margin-left:auto;min-width:160px}
+.part-head .pbar .cnt{font-size:11px;color:var(--sub);text-align:right}
+/* lesson */
+.lesson{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  margin-bottom:8px;overflow:hidden;transition:border-color .2s}
+.lesson.l-done{border-color:var(--done)}
+.lesson.l-part{border-color:var(--accent)}
+.lrow{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;user-select:none}
+.lrow:hover{background:#fafbfd}
+.cbx{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--sub);
+  cursor:pointer;padding:2px 6px;border-radius:6px;border:1px solid var(--line);
+  background:#fff;white-space:nowrap}
+.cbx.on{color:var(--done);border-color:var(--done);background:var(--done-soft);font-weight:700}
+.cbx input{display:none}
+.lnum{font-size:12px;font-weight:800;color:var(--accent);min-width:30px}
+.ltitle{font-size:14px;font-weight:600;flex:1}
+.l-done .ltitle{color:var(--sub);text-decoration:line-through;text-decoration-color:#cbd5e1}
+.badge{font-size:11px;padding:1px 8px;border-radius:99px;background:var(--chip);color:var(--sub);white-space:nowrap}
+.badge.core{background:var(--core-soft);color:var(--core);font-weight:700}
+.badge.lab{background:var(--accent-soft);color:var(--accent)}
+.badge.review{background:#fef9c3;color:#a16207}
+.badge.concept{background:#fce7f3;color:#be185d}
+.chev{color:var(--sub);font-size:12px;transition:transform .2s}
+.lesson.open .chev{transform:rotate(180deg)}
+.detail{display:none;padding:4px 18px 16px;border-top:1px dashed var(--line)}
+.lesson.open .detail{display:block}
+.detail h4{font-size:12px;color:var(--accent);margin:12px 0 4px;font-weight:700;letter-spacing:.05em}
+.detail ul,.detail ol{padding-left:20px;font-size:13px;color:var(--ink)}
+.detail li{margin:3px 0}
+.detail .art{font-size:13px;background:var(--chip);border-radius:8px;padding:8px 12px;margin-top:10px}
+.detail .art b{font-size:12px;color:var(--sub);display:block}
+footer{margin-top:40px;font-size:12px;color:var(--sub);text-align:center}
+footer a{color:var(--accent);text-decoration:none}
+/* modal */
+#modal{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100;
+  align-items:center;justify-content:center;padding:20px}
+#modal.show{display:flex}
+.mbox{background:#fff;border-radius:14px;max-width:640px;width:100%;padding:20px;max-height:80vh;display:flex;flex-direction:column}
+.mbox h3{font-size:15px;margin-bottom:10px}
+.mbox textarea{flex:1;min-height:300px;font-family:Consolas,monospace;font-size:12px;
+  border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical}
+.mbox .mrow{display:flex;gap:8px;margin-top:10px;justify-content:flex-end}
+@media(max-width:640px){.lrow{flex-wrap:wrap}.part-head .pbar{margin-left:0;width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="hd">
+      <h1>🎓 TinyLLM · AI Infra 课程进度台</h1>
+      <span class="sub">8 篇 47 讲 · 理论 + 本机实践 + 面试自测</span>
+      <div class="hd-right">
+        <button class="btn primary" onclick="exportSnap()">⬇ 导出进度快照</button>
+        <button class="btn" onclick="resetAll()">重置</button>
+      </div>
+    </div>
+    <div class="totalbar">
+      <div class="bar"><i id="tbar"></i></div>
+      <div class="txt"><span id="ttxt">…</span><span id="tsub"></span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <section id="hero" class="card"></section>
+  <section id="mapwrap"><div class="mapgrid" id="map"></div></section>
+  <main id="course"></main>
+  <footer>
+    进度数据保存在本浏览器(localStorage),换浏览器/清缓存前请先导出快照 ·
+    课程内容源:<a href="plans/课程大纲.md">docs/plans/课程大纲.md</a> ·
+    篇级权威进度:<a href="progress/PROGRESS.md">docs/progress/PROGRESS.md</a>
+  </footer>
+</div>
+
+<div id="modal"><div class="mbox">
+  <h3>📋 进度快照(复制后粘贴到 docs/progress/PROGRESS.md 的更新日志)</h3>
+  <textarea id="snap" readonly></textarea>
+  <div class="mrow">
+    <button class="btn" onclick="document.getElementById('modal').classList.remove('show')">关闭</button>
+    <button class="btn primary" onclick="copySnap()">复制到剪贴板</button>
+  </div>
+</div></div>
+
+<script>
+/* ================= 课程数据(与 docs/plans/课程大纲.md 同源) ================= */
+const P=[
+{num:0,title:"热身与已有基础",goal:"把已完成的阶段1/1.5/2从『做过』变成『能讲出来』",dir:"code/deployment · environment_setup · quantization",lessons:[
+ {id:"0.1",t:"课程总览与学习方法",h:1,k:"理论",
+  th:["知识体系总图与 8 篇依赖关系","每一讲的四步仪式:理论→实践→自测→勾选","进度台用法与两层进度体系"],
+  lab:"通读课程地图,建立全局认知",art:"无(心里有地图即可)",
+  qz:["课程 8 篇分别讲什么?","为什么测量篇排在最前面?"]},
+ {id:"0.2",t:"复习 · 模型部署(Gradio/监控)",h:0.5,k:"复习",
+  th:["Gradio 应用结构与多轮对话上下文传递","GPU/性能监控模块","device_map=auto 的作用"],
+  lab:"启动 start.bat 跑一轮对话",art:"无",
+  qz:["多轮对话的上下文如何传给模型?","device_map=auto 做了什么?"]},
+ {id:"0.3",t:"复习 · 推理环境(WSL2/vLLM 初体验)",h:0.5,k:"复习",
+  th:["WSL2+conda 工具链","vLLM 22× 提升的直观感受(机制留到第 2 篇精确化)"],
+  lab:"无",art:"无",
+  qz:["vLLM 比 Transformers 快的核心机制是什么?(先凭直觉答)"]},
+ {id:"0.4",t:"复习 · 量化初探(bnb/GPTQ)",h:1,k:"复习",
+  th:["动态量化 vs 静态量化","GPTQ 4.72× 压缩与 PPL 损失 2.29% 的数据回顾"],
+  lab:"无",art:"无",
+  qz:["动态/静态量化的本质区别?","GPTQ 的压缩比与精度代价各是多少?"]}]},
+{num:1,title:"GPU 体系结构与测量方法论",goal:"全课程地基:后面每个结论都用本篇工具验证",dir:"code/optimization/fundamentals · benchmarks",lessons:[
+ {id:"1.1",t:"GPU 计算模型:SM、warp 与 Tensor Core",h:1.5,k:"理论",
+  th:["SM(3070=46个)/warp(32线程)/grid-block-thread 层级","SIMT 执行与 warp 分歧","Tensor Core 与 FP16 矩阵累加;occupancy 概念"],
+  lab:"torch 查询设备属性,笔记画线程层级图",art:"fundamentals/docs/gpu-体系结构笔记.md",
+  qz:["为什么 GPU 适合矩阵运算?","warp 分歧为什么会拖慢性能?"]},
+ {id:"1.2",t:"内存层级:寄存器→共享内存→L2→HBM",h:1.5,k:"理论",
+  th:["各级容量/带宽/延迟量级(3070 HBM=448GB/s)","容量与带宽的三角关系","访存局部性与合并访存(coalescing)"],
+  lab:"整理 3070 各级内存参数表(并入 1.1 笔记)",art:"同 1.1",
+  qz:["各级内存延迟的数量级?","为什么 kernel 优化第一课是合并访存?"]},
+ {id:"1.3",t:"实测你的 3070:带宽与算力",h:2,k:"实践",
+  th:["有效带宽 vs 标称带宽","matmul 算力测试方法"],
+  lab:"大张量拷贝测带宽(目标≥350GB/s)+ fp16 matmul 测 TFLOPS,解释与标称差距",art:"fundamentals/bench_bandwidth.py + 日志",
+  qz:["为什么有效带宽只有标称的 70-80%?","你的 roofline 两个顶点各是多少?"]},
+ {id:"1.4",t:"Roofline 模型与算术强度",h:1.5,k:"理论",
+  th:["AI = FLOPs/Bytes;屋顶 = min(峰值算力, 带宽×AI)","3070 平衡点约 45-90 FLOP/Byte(用 1.3 实测值)","memory/compute bound 判定"],
+  lab:"手绘 roofline 图并标注典型 kernel 位置",art:"fundamentals/docs/roofline-推导.md",
+  qz:["给定 kernel 的 FLOPs 和字节数,如何判断 bound?","batch 增大对 AI 的影响?"]},
+ {id:"1.5",t:"★LLM decode 为什么 memory-bound:逐字节推导",h:2,k:"核心",
+  th:["decode 每 token 读全部权重:1B fp16≈2.5GB → 上限 448/2.5≈180 tok/s","GPTQ 4-bit 读量降至 ~0.7GB → 上限 ~640 tok/s","与阶段 2 实测差距的逐项解释(kernel 效率/非权重读/调度)","batch 增大:权重读摊薄 → AI 上升 → 吞吐先升后饱和"],
+  lab:"把推导写成笔记,对照阶段 2 bench 数据逐项解释差距",art:"fundamentals/docs/decode-memory-bound-推导.md",
+  qz:["★7B fp16 在 A100(2TB/s)上 decode 理论 tok/s?","为什么小模型量化常不提速、大模型却明显提速?"]},
+ {id:"1.6",t:"Profiler 入门:nsys 与 torch profiler",h:2,k:"实践",
+  th:["nsys 时间线:CPU/GPU/kernel/拷贝","torch profiler + kineto","WSL2 下 ncu 不可用(用时间线级替代)"],
+  lab:"profile Transformers 生成 100 token,找出时间大头 kernel",art:"fundamentals/logs/nsys-初体验.md",
+  qz:["时间线上的『空隙』意味着什么?","如何从 profile 判断优化访存还是计算?"]},
+ {id:"1.7",t:"统一基准 harness:TTFT/TPOT/P99/负载模型",h:3,k:"实践",
+  th:["TTFT(prefill)/TPOT(decode) 指标定义;P50/P99","open vs closed loop;长度分布与到达过程","重复次数与方差报告"],
+  lab:"实现 benchmarks/bench.py,复现阶段1.5 的 349.6 tok/s 基线(±10%)",art:"code/optimization/benchmarks/bench.py + 使用说明",
+  qz:["TTFT 和 TPOT 分别反映哪个阶段?","为什么基准必须报 P99 和方差?"]}]},
+{num:2,title:"推理引擎核心机制",goal:"面试核心区:KV cache/批调度/PagedAttention/投机采样",dir:"code/optimization/{kv_cache,engine_internals,speculative,quantized_serving}",lessons:[
+ {id:"2.1",t:"LLM 推理全景:prefill vs decode",h:1.5,k:"理论",
+  th:["prefill 一次算完→compute-bound;decode 逐 token→memory-bound","TTFT/TPOT 的归属;两阶段对硬件诉求的矛盾(为 7.3 埋伏笔)"],
+  lab:"用 harness 测 prefill/decode 时间随输入长度的变化曲线",art:"kv_cache/logs/prefill-decode-曲线.md",
+  qz:["为什么 prefill 是 compute-bound?","这个矛盾引出了什么架构?"]},
+ {id:"2.2",t:"★KV Cache:公式推导与实测",h:2.5,k:"核心",
+  th:["为什么自回归要缓存 K/V","公式:2×layers×kv_heads×head_dim×bytes×seq","本机模型代入:16层/8KV头/64维/fp16 → 32KB/token","GQA 把 128KB 降到 32KB;8GB 显存容量推算"],
+  lab:"不同 seq_len/batch 实测显存增量 vs 公式(误差<5%);推导最大并发×上下文",art:"kv_cache/kv_cache_math.py + 验证日志",
+  qz:["★手算:7B(32层/8KV头/128维)fp16,4k 上下文单条 KV 多大?","MQA/GQA/MLA 各是什么?"]},
+ {id:"2.3",t:"从静态批到 Continuous Batching",h:2,k:"理论",
+  th:["static batching 的尾部等待浪费","iteration 级调度;vLLM scheduler 核心循环;max_num_seqs"],
+  lab:"max_num_seqs=1/2/4/8/16 吞吐曲线",art:"engine_internals/logs/cb-吞吐曲线.md",
+  qz:["CB 为什么提升 GPU 利用率?","与 CPU 批处理调度的异同?"]},
+ {id:"2.4",t:"★PagedAttention:论文精读 + 源码走读",h:3,k:"核心",
+  th:["OS 虚拟内存借鉴:逻辑块/物理块/block table","消除内部碎片与预预留浪费;代价=块表间接寻址","vLLM 源码:scheduler.py + block manager"],
+  lab:"源码走读笔记 + 一次 generate 的调用链图;开 block 用量日志观测",art:"engine_internals/docs/vllm-源码走读.md",
+  qz:["PagedAttention 借鉴了 OS 什么机制?解决了什么浪费?","block_size 的取舍?"]},
+ {id:"2.5",t:"Prefix Caching 与 Chunked Prefill",h:2,k:"理论",
+  th:["前缀复用(多轮对话/system prompt);block 命中逻辑","chunked prefill:切长 prefill 避免 TTFT 阻塞 TPOT"],
+  lab:"共享 1k system prompt 的请求,开/关 prefix caching 的 TTFT 对比",art:"kv_cache/logs/prefix-caching-对比.md",
+  qz:["prefix caching 的命中条件?","chunked prefill 缓解什么问题?"]},
+ {id:"2.6",t:"投机采样:1B draft + 3B target 实验",h:3,k:"实践",
+  th:["draft 逐 token 预测 + target 并行验证;acceptance rate","理论加速上界;输出分布与收益关系"],
+  lab:"vLLM speculative decoding(1B draft+3B GPTQ target);测 acceptance 与加速比;找盈亏平衡点",art:"speculative/logs/投机采样-实验.md",
+  qz:["投机采样为什么不改变输出分布?","★acceptance 多少才划算(期望推导)?"]},
+ {id:"2.7",t:"引擎横向:vLLM vs llama.cpp(GGUF)",h:2,k:"实践",
+  th:["llama.cpp/GGUF 生态定位(边缘 vs 数据中心)","Q4_K_M 混合位宽 vs GPTQ;GGUF 用社区预量化(自行转换 7B 超内存)"],
+  lab:"同规模模型 vLLM vs llama.cpp 基准对比",art:"quantized_serving/logs/引擎对比.md",
+  qz:["为什么边缘侧偏好 llama.cpp?","Q4_K_M 的混合位宽是什么思路?"]}]},
+{num:3,title:"量化技术体系",goal:"在阶段 2 基础上补深度:原理推导+缺失方法+评估方法论",dir:"code/quantization(深化) · optimization/quantized_serving",lessons:[
+ {id:"3.1",t:"量化数学:scale/zero-point/粒度",h:1.5,k:"复习",
+  th:["线性量化 q=round(x/s)+z;对称/非对称","per-tensor/channel/group 粒度的误差-存储权衡","INT4 的 16 电平问题"],
+  lab:"无(重读量化基础概念并整理公式卡片)",art:"笔记并入量化基础概念.md",
+  qz:["group_size 128→32,存储与误差怎么变?","为什么权重量化常用对称?"]},
+ {id:"3.2",t:"动态量化与 LLM.int8 的 outlier 问题",h:2,k:"理论",
+  th:["outlier channels 现象与成因","LLM.int8 混合精度分解(离群列 fp16+其余 int8)","NF4 信息论最优 4-bit"],
+  lab:"复看阶段 2 bnb 实验,用论文视角重写结论",art:"code/quantization/docs/深化-动态量化.md",
+  qz:["outlier channels 的成因与危害?","LLM.int8 的代价是什么?"]},
+ {id:"3.3",t:"★GPTQ 原理深入:Hessian 与误差补偿",h:2.5,k:"核心",
+  th:["OBQ→GPTQ;Hessian 矩阵近似与逐列量化","量化误差传播补偿(修后面的列)","校准数据的作用与敏感性"],
+  lab:"对已产出 GPTQ 模型做逐层权重误差分析(MSE per layer)",art:"code/quantization/docs/深化-GPTQ原理.md",
+  qz:["GPTQ 为什么能『边量化边补偿』?","校准集分布不匹配会怎样?"]},
+ {id:"3.4",t:"AWQ 与 SmoothQuant:激活感知路线",h:2,k:"理论",
+  th:["AWQ:按激活尺度保护重要权重的等效缩放","SmoothQuant:激活难度迁移到权重","GPTQ/AWQ/SmoothQuant 三线对比"],
+  lab:"读两篇论文,写三线对比表",art:"code/quantization/docs/AWQ-SmoothQuant-笔记.md",
+  qz:["AWQ 不训练凭什么精度好?","SmoothQuant 解决 W4A8 的什么矛盾?"]},
+ {id:"3.5",t:"KV Cache 量化:int8 KV 实测",h:2,k:"实践",
+  th:["KV int8 机制;与权重量化的敏感度差异","fp8 需新卡(Ada+),3070 只能 int8"],
+  lab:"vLLM --kv-cache-dtype int8:吞吐/显存/PPL 三维对比(harness)",art:"kv_cache/logs/kv-int8-对比.md",
+  qz:["KV 量化对长上下文收益为什么更大?","int8 KV 的精度风险点?"]},
+ {id:"3.6",t:"7B 量化模型 serving(社区预量化 GPTQ)",h:2.5,k:"实践",
+  th:["显存预算表:权重4GB+KV+激活+预留 vs 8GB","max_model_len/max_num_seqs 容量取舍","对照 1.5 验证『7B 量化提速比 1B 明显』"],
+  lab:"社区预量化 Qwen2.5-7B-GPTQ 部署 + 基准(附录A) ",art:"quantized_serving/logs/7b-serving-基准.md",
+  qz:["8GB 跑 7B 的三个关键配置?","7B vs 1B 量化收益差异及原因?"]},
+ {id:"3.7",t:"量化评估方法论:PPL 之外(lm-eval)",h:2,k:"实践",
+  th:["PPL 局限:语言建模≠任务能力","下游任务评测(lm-eval/MMLU 子集)","能力退化模式:知识/推理/格式敏感度"],
+  lab:"lm-eval 对比 FP16/GPTQ/NF4",art:"code/quantization/logs/lm-eval-对比.md",
+  qz:["为什么 PPL 几乎不变但任务能力可能掉?","量化评估至少应含哪几维?"]}]},
+{num:4,title:"Kernel 与编译优化",goal:"从『会用优化』到『懂原理』:自己写 kernel",dir:"code/optimization/kernels",lessons:[
+ {id:"4.1",t:"CUDA 执行模型:线程块/合并访存/分块",h:2,k:"概念",
+  th:["grid/block/thread 与硬件映射;合并访存","共享内存分块 matmul(每 block 算一个 tile)","bank conflict 概念"],
+  lab:"手绘分块 matmul 数据流图(不写 CUDA 代码)",art:"kernels/docs/cuda-执行模型笔记.md",
+  qz:["★分块 matmul 为什么快(访存量分析)?","共享内存和 L1 的关系?"]},
+ {id:"4.2",t:"Triton 实践:vector add → fused softmax",h:3,k:"实践",
+  th:["block 编程模型(program 实例);与 CUDA 的对应","为什么 ML 工程师学 Triton(torch.compile 后端就是它)","autotune"],
+  lab:"vector add → fused softmax;对比 torch 原生性能",art:"kernels/triton_basics.py + 基准日志",
+  qz:["Triton 的 program/block 与 CUDA 什么对应?","fused softmax 省在哪里?"]},
+ {id:"4.3",t:"★FlashAttention:论文精读与简化复现",h:3.5,k:"核心",
+  th:["naive attention 的 HBM 流量 O(N²)","online softmax:增量 max/sum,数值稳定","tiling 后访存降阶;显存 O(N)","为什么 decode 阶段收益小"],
+  lab:"Triton 简化复现 tiled attention,对比 naive 显存与速度",art:"kernels/flash_attention_toy.py + docs/FA-精读笔记.md",
+  qz:["★FA 又快又省显存各自的原因?","online softmax 怎么保证数值稳定?","为什么 FA 对 prefill 收益大、decode 小?"]},
+ {id:"4.4",t:"torch.compile:图捕获与算子融合",h:2,k:"实践",
+  th:["Dynamo 图捕获;Inductor 融合+Triton 生成","reduce-overhead 模式与 CUDA Graph 的关系","dynamic shape 痛点"],
+  lab:"1B 推理开/关 compile 延迟对比;观察生成 kernel",art:"kernels/logs/torch-compile-对比.md",
+  qz:["compile 的加速来自哪两类手段?","dynamic shape 为什么是痛点?"]},
+ {id:"4.5",t:"CUDA Graphs:消除启动开销",h:2,k:"实践",
+  th:["kernel 启动开销(~几μs/个);图捕获+单次提交","静态形状约束;vLLM 默认用 CUDA Graph"],
+  lab:"torch.cuda.graphs 捕获 decode 步,测小 batch 延迟收益",art:"kernels/logs/cuda-graphs-对比.md",
+  qz:["什么时候 CUDA Graph 收益最大?","捕获失败常见原因?"]}]},
+{num:5,title:"训练与模型适配",goal:"infra 的另一半:显存算术/SFT/QLoRA/蒸馏(联动投机采样)",dir:"code/training_infra(新建)",lessons:[
+ {id:"5.1",t:"★训练显存算术:4GB 模型为何训练要 64GB",h:2.5,k:"核心",
+  th:["混合精度 16 bytes/param:权重2B+梯度2B+fp32 master 4B+Adam m/v 8B","1B→16GB、7B→112GB 推导;激活与序列长度","推论:8GB 卡连 1B 全参都放不下→必须 LoRA/QLoRA"],
+  lab:"实测 1B 训练一步显存 vs 推导对照",art:"training_infra/docs/训练显存算术.md",
+  qz:["★手算:7B Adam 混合精度最少多少显存?","为什么 ZeRO 能省?"]},
+ {id:"5.2",t:"混合精度与梯度检查点",h:2,k:"理论",
+  th:["bf16 vs fp16(范围/精度取舍);loss scaling","梯度检查点:重计算换激活显存 O(N)→O(√N)"],
+  lab:"开/关 grad ckpt 的显存与速度对比",art:"training_infra/logs/amp-ckpt-对比.md",
+  qz:["bf16 为什么不需要 loss scaling?","重计算的开销有多大?"]},
+ {id:"5.3",t:"SFT 全流程:数据、chat template、loss mask",h:2.5,k:"理论",
+  th:["指令微调目标;alpaca/sharegpt 数据格式","chat template 与特殊 token;只对 assistant 段回传 loss","数据质量>数量"],
+  lab:"构造 200 条小数据集(开源子集或本地模型生成)",art:"training_infra/data/ + docs/SFT-流程笔记.md",
+  qz:["SFT 的 loss 与预训练有何不同?","为什么必须 mask 掉 prompt 段?"]},
+ {id:"5.4",t:"QLoRA 微调实战:1B→3B",h:3.5,k:"实践",
+  th:["LoRA:ΔW=BA 低秩分解;r/alpha 意义;只训 <1% 参数","QLoRA:NF4 冻结底座+分页优化器(阶段3.2 回收)","显存账:3B QLoRA≈2GB底座+小优化器+激活"],
+  lab:"peft 对 1B→3B SFT(5.3 数据);loss 曲线+效果对比",art:"training_infra/qlora_sft.py + 训练日志 + 效果样例",
+  qz:["LoRA 为什么有效(低秩假设)?","r 越大越好吗?","QLoRA 里量化的对象是谁?"]},
+ {id:"5.5",t:"蒸馏:logit KD + draft 蒸馏联动投机采样",h:3,k:"实践",
+  th:["软标签与温度 T;KL 蒸馏损失;hard/soft 对比","★面向 target 蒸馏 draft → 提升 acceptance(课程特色联动)"],
+  lab:"3B→0.5B 蒸馏;蒸馏 draft 接回 2.6,对比 acceptance 与加速比",art:"training_infra/distill.py + speculative/logs/蒸馏draft对比.md",
+  qz:["温度 T 调高/调低的含义?","蒸馏与 SFT 的 loss 差异?","蒸馏在推理 infra 中扮演什么角色?"]},
+ {id:"5.6",t:"分布式训练概念:DDP/FSDP/ZeRO/3D 并行",h:2,k:"概念",
+  th:["DP→DDP(梯度 all-reduce);ZeRO 1/2/3 分别切什么","TP(每层切权重,通信频繁)/PP(micro-batch,bubble 公式)","3D 并行组合;Megatron 的位置"],
+  lab:"读 FSDP/DeepSpeed 文档,整理『单卡学不了但必须懂』对照表",art:"training_infra/docs/分布式训练概念.md",
+  qz:["ZeRO-3 切什么,代价是什么?","★bubble 公式与缓解手段?"]}]},
+{num:6,title:"服务化与生产部署",goal:"把模型变成服务:API/容器/监控/CI/负载均衡",dir:"code/production · advanced_monitoring",lessons:[
+ {id:"6.1",t:"API 服务化:FastAPI/OpenAI 兼容/SSE 流式",h:2.5,k:"实践",
+  th:["OpenAI 兼容协议(/v1/chat/completions);SSE 流式;并发模型"],
+  lab:"FastAPI 封装 3B GPTQ(流式);并发 1/4/16 压测",art:"production/api_server.py + 压测日志",
+  qz:["SSE 与 WebSocket 的取舍?","流式为什么降低体感延迟?"]},
+ {id:"6.2",t:"容器化:Dockerfile 与镜像分层",h:2,k:"实践",
+  th:["镜像分层与缓存;模型挂载 vs 打包;WSL2 的 Docker"],
+  lab:"Dockerfile 固化 6.1 服务;镜像体积优化",art:"production/Dockerfile + 部署说明",
+  qz:["镜像 vs 容器?","为什么模型文件用挂载不打包?"]},
+ {id:"6.3",t:"监控体系:prometheus+grafana+能耗 tok/J",h:3,k:"实践",
+  th:["指标分层:请求级 TTFT/TPOT、系统级 GPU、能效 tok/J","exporter→prometheus→grafana 管道;告警规则"],
+  lab:"6.1 服务加指标导出;管道跑通(建议 Windows 侧省 WSL 内存);功耗采样算 tok/J",art:"advanced_monitoring/ 管道配置 + 截图",
+  qz:["四类黄金指标?","tok/J 怎么测、为什么重要?"]},
+ {id:"6.4",t:"性能回归 CI:基准自动化",h:2.5,k:"实践",
+  th:["性能回归原理;GitHub Actions 无 GPU runner → 本地定时方案"],
+  lab:"定时自动跑 harness,结果入库 git,阈值对比脚本",art:"advanced_monitoring/perf_ci.sh + 基准历史",
+  qz:["为什么优化必须配回归 CI?","本地 CI 与云端 CI 的取舍?"]},
+ {id:"6.5",t:"负载均衡与多副本(1B 双副本实验)",h:2.5,k:"实践",
+  th:["轮询/最少连接;会话亲和;健康检查;容量=f(显存/模型)"],
+  lab:"nginx + 2×1B GPTQ 副本(每副本~1GB);单/双副本压测对比",art:"production/nginx.conf + 对比日志",
+  qz:["何时需要多副本?","单机多副本 vs 多机的本质差异?"]},
+ {id:"6.6",t:"生产架构概念:PD 分离/multi-LoRA/容量规划",h:1.5,k:"概念",
+  th:["PD 分离(为何/怎么分);multi-LoRA serving(S-LoRA 思想)","容量规划(goodput、SLO 达标率);弹性伸缩"],
+  lab:"无(概念笔记)",art:"笔记并入 production/docs/",
+  qz:["PD 分离的收益来源?","多 LoRA serving 省在哪?"]}]},
+{num:7,title:"分布式与前沿 + 毕业项目",goal:"单卡学不了的用论文+推导补;毕业项目收官",dir:"docs/notes(纯笔记)",lessons:[
+ {id:"7.1",t:"集合通信:NCCL 与 Ring All-Reduce",h:2,k:"概念",
+  th:["NCCL 的角色;ring all-reduce 算法","★通信量推导 2(n-1)/n×S;α-β 模型;通信计算重叠"],
+  lab:"推导笔记 + 手算例题",art:"docs/notes/集合通信.md",
+  qz:["★8 卡 ring all-reduce 每 GPU 通信量?","为什么 ring 优于树(带宽利用)?"]},
+ {id:"7.2",t:"张量并行/流水线并行与 3D 并行",h:2.5,k:"概念",
+  th:["TP:Megatron 式切权重,每层 all-reduce(要 NVLink)","PP:micro-batch 与 1F1B;bubble=(p-1)/(m+p-1)","DP+TP+PP 的 3D 组合;通信/显存/容忍度对比表"],
+  lab:"整理 3D 并行分配原则对照表",art:"docs/notes/并行策略.md",
+  qz:["TP 为什么必须在快互连内?","3D 并行各维切给谁(角色)?"]},
+ {id:"7.3",t:"PD 分离架构:DistServe/Splitwise 论文",h:2,k:"概念",
+  th:["干扰量化;解耦后的调度与 KV 传输;与 2.1/2.5 呼应"],
+  lab:"论文精读笔记",art:"docs/notes/PD分离.md",
+  qz:["PD 分离解决的两个问题?","KV 传输成为新瓶颈怎么办?"]},
+ {id:"7.4",t:"前沿选读:SGLang/FP8/MoE/长上下文",h:2,k:"概念",
+  th:["SGLang/RadixAttention(前缀树缓存);FP8 生态","MoE serving 专家路由挑战;Ring Attention/上下文并行"],
+  lab:"选读 2 篇写笔记",art:"docs/notes/前沿选读.md",
+  qz:["RadixAttention 与 2.5 prefix caching 的关系?","MoE 对显存/带宽的新矛盾?"]},
+ {id:"7.5",t:"🎓 毕业项目:自选模型全链路优化报告",h:8,k:"综合",
+  th:["选题 A:3B 全链路优化(量化→KV int8→CUDA Graph→QoS→tok/J)","选题 B:蒸馏 draft 投机采样流水线(蒸馏→acceptance→收益→成本)","选题 C:自选(与老师确认)"],
+  lab:"技术博客 docs/05-毕业项目篇.md + 完整代码 + 15 分钟模拟面试答辩",art:"博客+代码+汇报提纲",
+  qz:["验收:每个结论有数据;能答『为什么有效/代价是什么』"]}]}];
+
+/* ================= 状态 ================= */
+const KEY='tinyllm-course-v1';
+let S={};try{S=JSON.parse(localStorage.getItem(KEY)||'{}')}catch(e){S={}}
+function save(){localStorage.setItem(KEY,JSON.stringify(S))}
+function st(id){return S[id]||{t:false,p:false}}
+function setP(id,f,v){S[id]=Object.assign({t:false,p:false},S[id]);S[id][f]=v;save();render()}
+function done(l){const s=st(l.id);return s.t&&s.p}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+const BADGE={理论:'',实践:'lab',复习:'review',核心:'core',概念:'concept',综合:'core'};
+
+function render(){
+  const total=P.reduce((a,p)=>a+p.lessons.length,0);
+  const doneN=P.reduce((a,p)=>a+p.lessons.filter(done).length,0);
+  const tN=P.reduce((a,p)=>a+p.lessons.filter(l=>st(l.id).t).length,0);
+  const pN=P.reduce((a,p)=>a+p.lessons.filter(l=>st(l.id).p).length,0);
+  const hrs=P.reduce((a,p)=>a+p.lessons.reduce((b,l)=>b+l.h,0),0);
+  const dhrs=P.reduce((a,p)=>a+p.lessons.filter(done).reduce((b,l)=>b+l.h,0),0);
+  document.getElementById('tbar').style.width=(doneN/total*100)+'%';
+  document.getElementById('ttxt').textContent=`总进度:${doneN}/${total} 讲(${Math.round(doneN/total*100)}%)· 已投入约 ${dhrs}/${hrs} 小时`;
+  document.getElementById('tsub').textContent=`理论 ${tN}/${total} · 实践 ${pN}/${total}`;
+
+  /* hero: 第一个未完成讲 */
+  let cur=null,curPart=null;
+  outer:for(const p of P){for(const l of p.lessons){if(!done(l)){cur=l;curPart=p;break outer}}}
+  const hero=document.getElementById('hero');
+  if(!cur){hero.innerHTML=`<span class="tag">🎓 课程完成</span>
+    <div class="now">全部 ${total} 讲已完成!</div>
+    <div class="desc">毕业项目答辩通过后,记得在 PROGRESS.md 记录里程碑,并把面试速查过一遍。</div>`}
+  else{const s=st(cur.id);const need=[];if(!s.t)need.push('📖 理论');if(!s.p)need.push('🔬 实践');
+    hero.innerHTML=`<span class="tag">📍 你现在在这里 · ${esc(curPart.title)}</span>
+    <div class="now">${cur.id} ${esc(cur.t)}</div>
+    <div class="desc">${esc(curPart.goal)} · 代码目录:${esc(curPart.dir)}</div>
+    <div class="acts">下一步:${need.join(' → ')} 完成后勾选 ·
+      <a href="#" onclick="jumpTo('${cur.id}');return false" style="color:var(--accent)">展开本讲 ↓</a></div>`}
+
+  /* map */
+  document.getElementById('map').innerHTML=P.map(p=>{
+    const d=p.lessons.filter(done).length,n=p.lessons.length;
+    const cls=d===n?'st-done':(d>0?'st-act':'');
+    const label=d===n?'✓ 完成':(d>0?'进行中':'未开始');
+    return `<div class="pcard ${cls}" onclick="document.getElementById('part-${p.num}').scrollIntoView({behavior:'smooth'})">
+      <span class="st">${label}</span>
+      <div class="pt">第${p.num}篇 · ${esc(p.title)}</div>
+      <div class="pg">${esc(p.goal)}</div>
+      <div class="bar"><i style="width:${d/n*100}%;background:${d===n?'var(--done)':'var(--accent)'}"></i></div>
+      <div class="cnt">${d}/${n} 讲 · 约 ${p.lessons.reduce((a,l)=>a+l.h,0)}h</div></div>`}).join('');
+
+  /* course sections */
+  document.getElementById('course').innerHTML=P.map(p=>{
+    const d=p.lessons.filter(done).length,n=p.lessons.length;
+    return `<div id="part-${p.num}">
+      <div class="part-head"><span class="pn">第 ${p.num} 篇</span><h2>${esc(p.title)}</h2>
+        <span class="pinfo">${esc(p.dir)}</span>
+        <div class="pbar"><div class="bar"><i style="width:${d/n*100}%;background:${d===n?'var(--done)':'var(--accent)'}"></i></div>
+        <div class="cnt">${d}/${n} 讲</div></div></div>
+      ${p.lessons.map(l=>{
+        const s=st(l.id),isD=s.t&&s.p,isP=s.t||s.p;
+        return `<div class="lesson ${isD?'l-done':(isP?'l-part':'')}" id="L${l.id}">
+        <div class="lrow" onclick="toggleL('${l.id}',event)">
+          <label class="cbx ${s.t?'on':''}" onclick="event.stopPropagation()">
+            <input type="checkbox" ${s.t?'checked':''} onchange="setP('${l.id}','t',this.checked)">理论</label>
+          <label class="cbx ${s.p?'on':''}" onclick="event.stopPropagation()">
+            <input type="checkbox" ${s.p?'checked':''} onchange="setP('${l.id}','p',this.checked)">实践</label>
+          <span class="lnum">${l.id}</span>
+          <span class="ltitle">${esc(l.t)}</span>
+          <span class="badge ${BADGE[l.k]||''}">${l.k}</span>
+          <span class="badge">${l.h}h</span>
+          <span class="chev">▾</span></div>
+        <div class="detail">
+          <h4>📖 理论要点</h4><ul>${l.th.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+          <h4>🔬 实践任务</h4><ul><li>${esc(l.lab)}</li></ul>
+          <h4>✅ 面试自测(能脱稿回答再勾理论)</h4>
+          <ol>${l.qz.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>
+          <div class="art"><b>产出物(实践勾选标准:已入库)</b>${esc(l.art)}</div>
+        </div></div>`}).join('')}</div>`}).join('');
+}
+function toggleL(id,e){if(e&&e.target.tagName==='INPUT')return;
+  document.getElementById('L'+id).classList.toggle('open')}
+function jumpTo(id){const el=document.getElementById('L'+id);if(!el)return;
+  el.classList.add('open');el.scrollIntoView({behavior:'smooth',block:'center'})}
+function resetAll(){if(confirm('确定清空全部本地进度?此操作不可恢复(建议先导出快照)。')){
+  S={};save();render()}}
+
+function exportSnap(){
+  const total=P.reduce((a,p)=>a+p.lessons.length,0);
+  const doneN=P.reduce((a,p)=>a+p.lessons.filter(done).length,0);
+  const tN=P.reduce((a,p)=>a+p.lessons.filter(l=>st(l.id).t).length,0);
+  const pN=P.reduce((a,p)=>a+p.lessons.filter(l=>st(l.id).p).length,0);
+  let cur='(全部完成 🎓)';
+  outer:for(const p of P)for(const l of p.lessons)if(!done(l)){cur=`第${p.num}篇 · ${l.id} ${l.t}`;break outer}
+  const now=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const ts=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  let md=`## 课程进度快照 · ${ts}\n\n- 总进度:${doneN}/${total} 讲(${Math.round(doneN/total*100)}%)· 理论 ${tN}/${total} · 实践 ${pN}/${total}\n- 当前位置:${cur}\n\n`;
+  for(const p of P){const d=p.lessons.filter(done).length;
+    md+=`### 第${p.num}篇 ${p.title}(${d}/${p.lessons.length})\n\n`;
+    md+=`| 讲 | 标题 | 理论 | 实践 |\n|----|------|:---:|:---:|\n`;
+    for(const l of p.lessons){const s=st(l.id);
+      md+=`| ${l.id} | ${l.t} | ${s.t?'✅':'·'} | ${s.p?'✅':'·'} |\n`}
+    md+='\n'}
+  md+=`> 来源:docs/dashboard.html 导出 · 粘贴到 PROGRESS.md 更新日志后可删除旧快照\n`;
+  document.getElementById('snap').value=md;
+  document.getElementById('modal').classList.add('show')}
+function copySnap(){const ta=document.getElementById('snap');ta.select();
+  try{navigator.clipboard.writeText(ta.value).then(()=>alert('已复制')).catch(()=>{document.execCommand('copy');alert('已复制')})}
+  catch(e){document.execCommand('copy');alert('已复制')}}
+render();
+</script>
+</body>
+</html>

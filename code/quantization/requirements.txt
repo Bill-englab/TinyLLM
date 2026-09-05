@@ -1,0 +1,21 @@
+# 阶段 2:模型量化 依赖清单
+# 运行环境:WSL2 (Ubuntu) + conda 环境 inference_opt(2026-06 重建版)
+# 说明:transformers 5.x 与 4.x API 有显著差异;auto-gptq 已废弃,
+#       生态已迁移到 gptqmodel(见 docs/问题记录.md)
+# 实测成果:GPTQ 4-bit 压缩 4.72x(4.61GB→0.98GB),PPL 损失仅 2.29%
+
+torch==2.12.0           # PyPI wheel,自带 CUDA 13.0 runtime
+transformers==5.12.1    # GPTQConfig 内置于此
+gptqmodel==7.1.0        # GPTQ 量化主包(auto-gptq 继任者)
+optimum==2.2.0          # transformers ↔ gptqmodel 桥接
+bitsandbytes==0.49.2    # 动态量化(INT8/NF4)
+accelerate==1.14.0      # device_map 支持
+triton==3.7.0           # GPTQ Triton backend(Marlin 需 nvcc>=12,本机 11.5 用不了)
+nvidia-ml-py3==7.352.0  # pynvml,GPU 显存监控(benchmarks 使用)
+
+# 可选:实验 6 的 API 模式(OpenAI 兼容 HTTP 服务)
+# fastapi
+# uvicorn
+
+# 可选:阶段 3 计划用 vLLM 加载 GPTQ 模型
+# vllm

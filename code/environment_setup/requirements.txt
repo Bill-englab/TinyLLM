@@ -1,0 +1,11 @@
+# 阶段 1.5:推理优化环境搭建 依赖清单
+# 运行环境:WSL2 (Ubuntu) + conda 环境 inference_opt
+# 说明:此为 2026-04 阶段 1.5 完成时的版本快照;
+#       该环境在阶段 2 期间(2026-06)丢失并重建,重建后的环境见
+#       code/quantization/requirements.txt
+# 实测成果:vLLM bs=8 吞吐 349.6 tok/s(较 Transformers 提升 22x)
+
+vllm==0.19.0            # 高性能推理引擎(PagedAttention/Continuous Batching)
+torch==2.10.0           # CUDA 11.8 wheel(阶段 1.5 时期)
+transformers==4.57.6    # HF 模型库(baseline 推理)
+accelerate==1.13.0      # device_map 支持

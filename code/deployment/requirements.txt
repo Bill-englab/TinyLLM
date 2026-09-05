@@ -1,0 +1,10 @@
+# 阶段 1:模型部署 依赖清单
+# 运行环境:Windows 原生 Python(conda 环境,H:/sys/conda)
+# 说明:阶段 1 完成于 2026-04,以下为当时的版本快照
+# 安装:conda 环境内 pip install -r requirements.txt
+
+torch==2.6.0            # CUDA 12.6 wheel
+gradio==6.11.0          # Web 聊天界面
+modelscope              # 模型下载与加载(阶段 1 时期版本未记录,装最新即可)
+transformers            # 由 modelscope 依赖带入,阶段 1 时期为 4.x
+psutil                  # CPU/内存监控

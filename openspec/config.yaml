@@ -19,6 +19,10 @@ context: |
     模型: LLaMA-3.2-1B-Instruct(FP16 基线 + GPTQ 4-bit 量化版)
 
   约定:
+    - 课程制学习(2026-09-05 起):教学主文档为 docs/plans/课程大纲.md
+      (8 篇 47 讲,每讲理论/实践/产出物/面试自测);讲级进度在
+      docs/dashboard.html 本地勾选,篇级进度在 docs/progress/PROGRESS.md
+    - 学习路线图(docs/plans/学习路线图.md)为工程映射:篇↔阶段↔代码目录
     - 每个学习阶段一个目录: code/<阶段名>/{apps,experiments,benchmarks,scripts,docs,logs}
     - 目录规范见 skill/stage-organization/references/directory-structure.md
     - 阶段完成必须产出: 技术博客(docs/NN-主题篇.md) + 学习记录 + 检查清单,

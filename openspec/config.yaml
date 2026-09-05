@@ -1,0 +1,43 @@
+schema: spec-driven
+
+# Project context (shown to AI when creating artifacts)
+context: |
+  项目: TinyLLM — AI 推理优化学习项目(github.com/Bill-englab/TinyLLM)
+
+  目标: 在消费级硬件(RTX 3070 8GB + WSL2)上系统学习 LLM 推理优化的
+    全流程:部署 → 量化 → 推理优化 → 高级监控 → 生产部署。
+
+  阶段路线(见 code/学习路线图.md):
+    - 阶段1 deployment: 模型部署(Gradio + 监控) — 已完成
+    - 阶段1.5 environment_setup: WSL2 + vLLM 环境(349.6 tok/s) — 已完成
+    - 阶段2 quantization: bnb/GPTQ 量化(4.72x 压缩) — 已完成
+    - 阶段3 optimization: 推理优化(vLLM+GPTQ/FlashAttention/投机采样) — 进行中
+    - 阶段4 advanced_monitoring / 阶段5 production — 计划中
+
+  技术栈: Python 3.10 (conda: inference_opt) / PyTorch 2.12 + CUDA 13.0 /
+    transformers 5.12.1 / vLLM / gptqmodel 7.1.0 / bitsandbytes / Gradio /
+    模型: LLaMA-3.2-1B-Instruct(FP16 基线 + GPTQ 4-bit 量化版)
+
+  约定:
+    - 每个学习阶段一个目录: code/<阶段名>/{apps,experiments,benchmarks,scripts,docs,logs}
+    - 目录规范见 skill/stage-organization/references/directory-structure.md
+    - 阶段完成必须产出: 技术博客(docs/NN-主题篇.md) + 学习记录 + 检查清单
+    - 文档语言: 中文;代码注释: 中文为主
+    - 提交信息: 中文,conventional commits 风格(chore/docs/feat/...)
+    - 模型文件不入库(code/model/ 已 gitignore),获取方式见 code/model/README.md
+    - 实验日志(md)入库保留,大文件与二进制产物不入库
+
+rules:
+  proposal:
+    - 提案需说明"属于哪个学习阶段"以及"完成定义(检查清单)"
+  tasks:
+    - 任务粒度以一次可独立验证的实验/文档为单位
+    - 每个任务完成后在对应阶段目录留下可追溯产物(日志/记录)
+
+operations:
+  apply:
+    guidance:
+      - 学习类变更执行时须保持"边做边记录",踩坑即时写入问题记录
+  archive:
+    guidance:
+      - 归档前确认该阶段的学习记录与检查清单已同步更新

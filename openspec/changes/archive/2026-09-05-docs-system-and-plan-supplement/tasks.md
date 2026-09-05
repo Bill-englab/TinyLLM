@@ -24,4 +24,4 @@
 
 - [x] 5.1 链接检查:INDEX/PROGRESS/路线图/README 全部相对链接有效
 - [x] 5.2 `openspec validate docs-system-and-plan-supplement` 通过
-- [ ] 5.3 分主题提交并推送,归档本 change
+- [x] 5.3 分主题提交并推送,归档本 change

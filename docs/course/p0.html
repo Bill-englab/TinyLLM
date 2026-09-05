@@ -99,14 +99,15 @@ Transformers 原生 ~15.9 tok/s,vLLM bs=8 时 349.6 tok/s,<strong>22×</strong>�
 <p>重读 <a href="../03-模型量化篇.md">03-模型量化篇</a> 与
 <a href="../../code/quantization/docs/量化基础概念.md">量化基础概念</a>。必须脱口而出的数字:</p>
 <ul>
-  <li>模型体积 4.61 GB → <strong>0.98 GB</strong>(GPTQ 4-bit,4.72× 压缩)</li>
+  <li>模型体积 4.61 GB → <strong>0.98 GB</strong>(GPTQ 4-bit;磁盘目录口径,
+      真实权重压缩约 2.4×,1.5 讲细算)</li>
   <li>峰值显存 2.32 GB → <strong>1.01 GB</strong>(省 56%)</li>
   <li>PPL 3.197 → <strong>3.271</strong>(损失仅 2.29%)</li>
   <li>关键反直觉结论:<strong>小模型上量化不提速</strong>(甚至变慢)</li>
 </ul>
 <div class="box keypoint"><span class="bt">最重要的钩子</span>
 "量化在小模型上不提速"——这个结论你当时是从端到端数据里看出来的。
-1.5 讲会让你把它算出来:为什么上限翻了 4 倍,实测却没动?
+1.5 讲会让你把它算出来:为什么上限翻了 2.4 倍,实测却没动?
 算明白这一点,你就能预判多大的模型量化才开始提速——3.6 讲的 7B 实验
 验证的正是这个预测。
 </div>
@@ -116,7 +117,8 @@ Transformers 原生 ~15.9 tok/s,vLLM bs=8 时 349.6 tok/s,<strong>22×</strong>�
     静态(GPTQ):用校准数据离线计算每层最优 scale,产出可保存、可分发的量化模型。
     工程上是"即插即用"与"一次投入长期复用"的取舍。</div></details>
   <details><summary>GPTQ 的压缩比与精度代价各是多少?</summary>
-    <div class="ans">4.72×(4.61→0.98 GB);PPL 3.197→3.271,损失 2.29%,输出仍可读。</div></details>
+    <div class="ans">4.72×(4.61→0.98 GB,目录口径——FP16 目录里有两份权重,
+    真实约 2.4×,1.5 讲细算);PPL 3.197→3.271,损失 2.29%,输出仍可读。</div></details>
 </div>
 <div class="actions" data-lesson="0.4">
   <button class="mkbtn" data-f="t" onclick="mark('0.4','t')">标记理论完成</button>

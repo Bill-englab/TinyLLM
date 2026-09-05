@@ -33,18 +33,19 @@ decode,吞吐上限到底是多少;阶段 2 那个"量化不提速"的反直觉�
 <pre class="diagram">LLaMA-3.2-1B-Instruct:1.24B 参数(你已在 config.json 核实过层数/KV 头)
 
 主要读入(每 token):
-  权重      1.24e9 × 2B(fp16)  ≈ 2.48 GB   ← 绝对大头
+  权重      1.24e9 × 2B(bf16,与 fp16 同为 2 字节) ≈ 2.48 GB   ← 绝对大头
   KV cache  32KB/token × 当前长度(4k 上下文时 ≈ 0.13 GB)
-  输入嵌入  ~0.26 MB(token id → 向量),可忽略
+  词表矩阵  输出 logits 每步要过整个词表(≈0.53 GB)——已含在上面的
+            参数量里(占 1B 参数约 1/5),不重复计
 
 主要 FLOPs(每 token):
   ≈ 2 × 参数量 = 2.48 GFLOPs(乘了再加,每个参数约 2 次浮点操作)
 
-⇒ AI = 2.48e9 FLOPs / 2.48e9 Bytes ≈ 2 FLOP/Byte(把 KV 计入还会更低)</pre>
+⇒ AI = 2.48 GFLOPs / 2.48 GB ≈ 1 FLOP/Byte(把 KV 计入还会更低)</pre>
 <div class="box keypoint"><span class="bt">结论一</span>
-LLM decode 的 AI ≈ 1~2 FLOP/Byte,而 3070 平衡点 ≈ 81,
-离了 40-80 倍,memory-bound 得非常彻底。这种情况下性能上限 = 带宽 × AI,
-跟算力基本没关系。
+LLM decode 的 AI ≈ 1 FLOP/Byte(bf16/fp16 权重口径,把 KV 计入还要更低),
+3070 的平衡点 ≈ 81,差了 80 倍,memory-bound 得非常彻底。
+这种情况下性能上限 = 带宽 × AI,跟算力基本没关系。
 </div>
 
 <h2>2. 第二步:算吞吐上限(batch=1)</h2>
@@ -52,14 +53,23 @@ LLM decode 的 AI ≈ 1~2 FLOP/Byte,而 3070 平衡点 ≈ 81,
        上限 = 448 GB/s ÷ 2.48 GB/token ≈ 180 tok/s(标称带宽)
        实测带宽口径:≈ 370 ÷ 2.48 ≈ 150 tok/s
 
-GPTQ 4-bit: 权重读量 ≈ 0.62 GB(0.5B 权重 + scale/zero 元数据)
-       上限 = 448 ÷ 0.62 ≈ 720 tok/s  ← 上限翻了 ~4 倍!</pre>
+GPTQ 4-bit: 每 token 读量 ≈ 1.03 GB(实际模型文件大小;其中词表
+       0.53 GB 仍是 bf16——GPTQ 只压线性层,压不动 Embedding)
+       上限 = 448 ÷ 1.03 ≈ 435 tok/s  ← 上限只翻了约 2.4 倍</pre>
 <p><strong>对照你的阶段 2 实测</strong>(去 <code>code/quantization/logs/</code> 查
 bench_throughput 的数字,填进你的推导笔记):fp16 和 GPTQ 的实测 tok/s
 分别是多少?各自达到上限的百分之几?</p>
+<div class="box pitfall"><span class="bt">顺带纠正两个容易误导人的数字</span>
+① 阶段 2 报的"4.72× 压缩"(4.61→0.98 GB):分子是整个 FP16 目录,里面
+有两份权重(model.safetensors 2.47 GB + original/consolidated.00.pth 2.47 GB),
+而运行时只读一份。真实的读量下降是 2.47 ÷ 1.03 ≈ 2.4×。<br>
+② 为什么压不到理论上的 1/4:词表嵌入 0.53 GB(占参数约 1/5)GPTQ 压不动,
+仍是 bf16;能压的线性层确实压到了 4-bit。<br>
+引用数据前先看清口径——这就是 1.3 讲"算清字节数"的教训。
+</div>
 
 <h2>3. 第三步:解释"量化不提速"之谜(阶段 2 之谜揭晓)</h2>
-<div class="box keypoint"><span class="bt">结论二:上限×4 ≠ 实测×4</span>
+<div class="box keypoint"><span class="bt">结论二:上限×2.4,实测却纹丝不动</span>
 roofline 给的是天花板。你的阶段 2 实测远低于天花板,
 说明时间还花在了权重读取之外的地方:
 <ul style="margin-top:6px">
@@ -72,7 +82,7 @@ roofline 给的是天花板。你的阶段 2 实测远低于天花板,
   <li><strong>KV 与激活读</strong>:上下文越长占比越大</li>
 </ul>
 这些开销对 fp16 和 GPTQ <strong>同样存在</strong>。当"其他开销"主导总时间时,
-权重读从 2.48→0.62 GB 省下的那部分就显不出来——这就是你测到的"不提速"。
+权重读从 2.48→1.03 GB 省下的那部分就显不出来——这就是你测到的"不提速"。
 </div>
 <div class="box analogy"><span class="bt">类比</span>
 搬家总时间 = 打包 + 路上 + 拆包。你换了辆快车(权重读×1/4),
@@ -83,7 +93,7 @@ roofline 给的是天花板。你的阶段 2 实测远低于天花板,
 
 <h2>4. 第四步:batch 为什么能救吞吐(并且何时失效)</h2>
 <p>batch=B 时,<strong>权重只读一遍</strong>,同时服务 B 个序列的 B 个 token:</p>
-<pre class="diagram">batch=8 的 AI ≈ (2×1.24e9×8 FLOPs) / (2.48e9 + KV×8 Bytes) ≈ 16 FLOP/Byte
+<pre class="diagram">batch=8 的 AI ≈ (2×1.24e9×8 FLOPs) / (2.48e9 + KV×8 Bytes) ≈ 8 FLOP/Byte
 → 仍在 memory-bound 区,但权重读被 8 条序列摊薄
 → 吞吐上限 ≈ 8 × 180 = 1440 tok/s(单条速度不变!)
 
@@ -108,7 +118,8 @@ PagedAttention 是让同样显存装下更多 KV(也就是更大 batch),
   <details><summary>1. ★7B 模型 fp16,单卡 A100 80GB(带宽 ~2TB/s),decode 理论吞吐?</summary>
     <div class="ans">7B 参数 × 2B = 14 GB 权重读/token。
     上限 = 2000 GB/s ÷ 14 GB ≈ <strong>143 tok/s</strong>(batch=1)。
-    追问:换 4-bit?→ 14/4 ≈ 3.5 GB → ≈ 570 tok/s。
+    追问:换 4-bit?→ 线性层可压(约 3.2 GB),词表约 1 GB 压不动,
+    合计 ≈4.3 GB → ≈ 465 tok/s(约 3.2 倍,词表占比越小收益越足)。
     再追问:为什么 A100 上量化提速比 3070 上明显?→ 7B 的权重读占总时间比例
     远大于 1B(数学同结论三),"减字节"直接兑现。</div></details>
   <details><summary>2. 为什么"量化在小模型上不提速"不能外推到所有场景?</summary>

@@ -61,7 +61,7 @@ with torch.profiler.profile(
 ) as prof:
     model.generate(**ids, max_new_tokens=50, do_sample=False)
 
-# 表格:按 GPU 自耗时排序,看谁吃时间
+# 表格:按 GPU 自耗时排序,看谁吃时间(新版 torch 若不认这个键名,改用 self_device_time_total)
 print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=15))
 # 可选:导出 chrome trace,浏览器打开 chrome://tracing 查看
 prof.export_chrome_trace("trace.json")</code></pre>

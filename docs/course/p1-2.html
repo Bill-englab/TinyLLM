@@ -34,7 +34,7 @@
  [寄存器]      [共享内存 SMEM]      [L2 缓存]         [HBM 显存]
  每人手里草稿   教室里的白板          楼层储物柜         城市总仓库
  ~256KB/SM     ~128KB/SM(与L1分)   4MB 全卡共享       8GB 全卡共享
- ~TB/s 级      ~13-20 TB/s(片上)   ~2-3 TB/s          448 GB/s ← 瓶颈!
+ ~TB/s 级      ~10-20 TB/s(片上)  ~2-3 TB/s          448 GB/s ← 瓶颈!
  延迟≈即时      延迟 ~30 周期        延迟 ~200 周期     延迟 ~400-600 周期
 
  距离核心:  同一周期可用  |  同一SM内    |   全卡    |   芯片外(GDDR6 颗粒)</pre>
@@ -88,7 +88,7 @@ warp 的 32 个学生各自报了一个地址要取货。<br>
 <table>
 <tr><th>层级</th><th>容量</th><th>带宽(量级)</th><th>延迟(周期)</th><th>谁管理</th></tr>
 <tr><td>寄存器</td><td>256KB/SM</td><td>~10+ TB/s</td><td>~0</td><td>编译器</td></tr>
-<tr><td>共享内存/L1</td><td>128KB/SM</td><td>~13-20 TB/s</td><td>~30</td><td><strong>程序员</strong></td></tr>
+<tr><td>共享内存/L1</td><td>128KB/SM</td><td>~10-20 TB/s</td><td>~30</td><td><strong>程序员</strong></td></tr>
 <tr><td>L2</td><td>4MB</td><td>~2-3 TB/s</td><td>~200</td><td>硬件</td></tr>
 <tr><td>GDDR6</td><td>8GB</td><td><strong>448 GB/s(标称)</strong></td><td>~400-600</td><td>—</td></tr>
 <tr><td>FP16 Tensor</td><td>—</td><td>≈40 TFLOPS</td><td>—</td><td>—</td></tr>

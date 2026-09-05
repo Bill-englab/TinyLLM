@@ -179,7 +179,7 @@ const P=[
   lab:"手绘 roofline 图并标注典型 kernel 位置",art:"fundamentals/docs/roofline-推导.md",
   qz:["给定 kernel 的 FLOPs 和字节数,如何判断 bound?","batch 增大对 AI 的影响?"]},
  {id:"1.5",t:"★LLM decode 为什么 memory-bound:逐字节推导",h:2,k:"核心",
-  th:["decode 每 token 读全部权重:1B fp16≈2.5GB → 上限 448/2.5≈180 tok/s","GPTQ 4-bit 读量降至 ~0.7GB → 上限 ~640 tok/s","与阶段 2 实测差距的逐项解释(kernel 效率/非权重读/调度)","batch 增大:权重读摊薄 → AI 上升 → 吞吐先升后饱和"],
+  th:["decode 每 token 读全部权重:1B fp16≈2.5GB → 上限 448/2.5≈180 tok/s","GPTQ 后读量≈1.03GB(词表未量化)→ 上限≈435 tok/s","与阶段 2 实测差距的逐项解释(kernel 效率/非权重读/调度)","batch 增大:权重读摊薄 → AI 上升 → 吞吐先升后饱和"],
   lab:"把推导写成笔记,对照阶段 2 bench 数据逐项解释差距",art:"fundamentals/docs/decode-memory-bound-推导.md",
   qz:["★7B fp16 在 A100(2TB/s)上 decode 理论 tok/s?","为什么小模型量化常不提速、大模型却明显提速?"]},
  {id:"1.6",t:"Profiler 入门:nsys 与 torch profiler",h:2,k:"实践",

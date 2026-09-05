@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1.7 统一基准 harness:TTFT/TPOT/P99/负载模型 — TinyLLM 课程</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav><div class="navin">
+  <a class="brand" href="index.html">🎓 TinyLLM 课程</a>
+  <span class="crumb">第1篇 · 7/7 · GPU 体系结构与测量(收官)</span>
+  <div class="grow"></div>
+  <a class="pg" href="p1-6.html">← 1.6</a>
+  <a class="pg" href="../dashboard.html">进度台 →</a>
+</div></nav>
+<div class="wrap">
+<article>
+<h1>1.7 统一基准 harness:TTFT / TPOT / P99 / 负载模型</h1>
+<div class="metabox">
+  <span>实践 · 3h</span><span>先修:1.5, 1.6</span>
+  <span>产出:code/optimization/benchmarks/bench.py</span>
+</div>
+<p class="lead">
+第 1 篇收官,也为你造一把<strong>贯穿余下全课程的尺子</strong>。
+阶段 1.5/2 各写过基准脚本,但口径不一、不能互比;本讲把测量方法论
+固化成一个统一 harness——此后第 2/3/4 篇的所有实验,都用它出数,
+旧三件套退役。写完这一讲,你就完成了"会测"到"测得科学"的升级。
+</p>
+
+<h2>1. 指标体系:先分清四个数</h2>
+<table>
+<tr><th>指标</th><th>定义</th><th>反映什么</th><th>归属阶段</th></tr>
+<tr><td><strong>TTFT</strong></td><td>请求发出 → 第一个 token 返回</td><td>用户体感"多快开始说话"</td><td>prefill(+排队)</td></tr>
+<tr><td><strong>TPOT</strong>(ITL)</td><td>后续相邻 token 的平均间隔</td><td>打字机流畅度</td><td>decode</td></tr>
+<tr><td><strong>吞吐</strong></td><td>系统总产出 tok/s(所有请求合计)</td><td>硬件利用效率</td><td>两者</td></tr>
+<tr><td><strong>总时延</strong></td><td>整请求完成时间</td><td>= TTFT + TPOT×(n-1)</td><td>—</td></tr>
+</table>
+<div class="box pitfall"><span class="bt">坑:只报平均值的基准都是耍流氓</span>
+并发下 TTFT 波动巨大(有人排队有人不排)。必须报 <strong>P50(中位)</strong> 和
+<strong>P99(长尾)</strong>:P99 是 SLO(服务等级目标)的守门员——
+"平均 200ms"掩盖的可能是"1% 的用户等 5 秒"。同时报<strong>重复次数与标准差</strong>,
+单次测量不构成数据。
+</div>
+
+<h2>2. 负载模型:你的数字是"在什么负载下"测的?</h2>
+<div class="box keypoint"><span class="bt">两个必须写进报告的维度</span>
+① <strong>长度分布</strong>:输入/输出长度(ISL/OSL)——固定 32 token 的 prompt
+和"平均 200、方差大"的混合负载,结论完全不同;<br>
+② <strong>到达模型</strong>:closed loop(固定并发数,做完立刻补位,像 wrk/ab)
+vs <strong>open loop</strong>(按到达率 λ 生成请求,如泊松)。
+open loop 不掩盖排队,是学术界与严肃评测(如 vLLM benchmark_serving)的选择。
+</div>
+<pre class="diagram">closed loop(c=4):  ██░██░██░██░   ← 4 个工位永远有活,系统被"喂饱"
+                    ↑完成后立刻补位
+open loop(λ=2/s):  ██ ██  ███ ██ ← 按真实节奏来,过载时队列堆积、TTFT 爆炸
+                              ↑ 这才是用户眼中的系统</pre>
+
+<h2>3. harness 设计(骨架给你,实现是本讲实践)</h2>
+<pre><code># code/optimization/benchmarks/bench.py 骨架(实现细节自己补全)
+from dataclasses import dataclass, field
+
+@dataclass
+class LoadSpec:
+    n_requests: int = 32
+    isl: tuple = (128, 128)      # 输入长度(min,max)或固定值
+    osl: tuple = (128, 128)      # 输出长度
+    concurrency: int = 4          # closed loop 并发
+    mode: str = "closed"          # closed / open
+    rate: float = 2.0             # open loop 到达率(req/s)
+
+@dataclass
+class Report:
+    ttft: list = field(default_factory=list)   # 每请求一个样本
+    tpot: list = field(default_factory=list)
+    total_tokens: int = 0
+    wall_time: float = 0.0
+    def summary(self):                          # 汇总成 md 表
+        import statistics as s
+        p = lambda x, q: sorted(x)[int(len(x)*q)]
+        return {
+            "TTFT p50/p99 (ms)": (p(self.ttft,.5)*1e3, p(self.ttft,.99)*1e3),
+            "TPOT p50/p99 (ms)": (p(self.tpot,.5)*1e3, p(self.tpot,.99)*1e3),
+            "throughput (tok/s)": self.total_tokens / self.wall_time,
+        }
+
+# 引擎适配层:统一接口,后面接 vLLM / transformers / llama.cpp
+class Engine:
+    def generate(self, prompt_ids, n_out) -> tuple[list[int], float, float]:
+        """返回 (token_ids, ttft_s, 生成总s)——由各引擎实现"""
+
+def bench(engine, load: LoadSpec, repeats=3, warmup=2) -> list[Report]:
+    ...  # 预热 → 生成负载 → 并发执行(线程池) → 收样本 → 重复 repeats 次</code></pre>
+<p>实现要点:①TTFT/TPOT 采集放引擎适配层(流式输出时记录首 token 时间戳);
+②报告同时存 <code>logs/</code> 的 md 与屏幕输出;③固定随机种子保证负载可复现;
+④可复用 <code>code/quantization/benchmarks/_loader.py</code> 的模型加载逻辑。</p>
+
+<h2>4. 验收:用旧数据校准新尺子</h2>
+<p>新 harness 跑 transformers FP16、bs=1 与 bs=8,对照阶段 1.5 的
+349.6 tok/s:<strong>复现误差应在 ±10% 内</strong>(环境差异带来的漂移)。
+校准通过后,1.5 讲推导笔记里的"实测/上限"表格用新数据刷新一遍——
+这份表就是你第 2 篇博客的第一手素材。</p>
+
+<div class="quiz"><div class="qt">✅ 自测(面试向,点击揭晓)</div>
+  <details><summary>1. TTFT 和 TPOT 分别反映什么?为什么优化手段不同?</summary>
+    <div class="ans">TTFT≈prefill(一次大矩阵乘,compute-bound,吃算力);
+    TPOT≈decode(逐 token,memory-bound,吃带宽)。
+    优化 TTFT:算子融合/更大 batch 的 prefill/chunked prefill 调度;
+    优化 TPOT:量化(减权重读)/KV 量化/PagedAttention(更多并发摊薄)。
+    两指标常互相挤压——这是 2.5/7.3 讲的矛盾主线。</div></details>
+  <details><summary>2. 为什么严肃评测用 open loop 而不是 closed loop?</summary>
+    <div class="ans">closed loop 固定并发,请求完成立即补位,系统永远"被喂饱",
+    测的是<strong>饱和吞吐</strong>,排队被隐藏;open loop 按到达率施压,
+    过载时队列堆积、P99 爆炸,能测出<strong>系统真实容量边界</strong>(goodput)。
+    报告不写负载模型,数字无法解读。</div></details>
+  <details><summary>3. P99 为什么比平均值重要?什么时候反而看 P50?</summary>
+    <div class="ans">SLO 通常按长尾定义(99% 用户 TTFT&lt;500ms),平均数被
+    大多数快请求拉低,掩盖长尾。看 P50 的场景:分析"典型用户体验"或
+    debug 中位数行为时。工程惯例:P50/P99 一起报,average 只做参考。</div></details>
+</div>
+
+<div class="lab"><div class="lt">🔬 实践(约 3h,第 1 篇最重的一讲)</div>
+<ul>
+  <li>建 <code>code/optimization/benchmarks/</code>,实现 <code>bench.py</code>
+      (LoadSpec/Report/Engine/闭合负载;open loop 可选加分项)</li>
+  <li>先实现 transformers 引擎适配,跑 FP16:bs=1 与 bs=8 各 3 次重复</li>
+  <li>校准:对照阶段 1.5 的 349.6 tok/s,偏差 &gt;10% 就排查(负载形状/计时口径)</li>
+  <li>输出报告 md 进 <code>benchmarks/logs/</code>:P50/P99/均值/标准差/吞吐/负载参数</li>
+  <li>用新数据刷新 1.5 讲的"实测/上限"对照表</li>
+  <li>写 <code>benchmarks/README.md</code>:用法 + 指标定义(给未来的自己)</li>
+  <li>git 提交。第 1 篇收官 → dashboard 四讲全勾 → 导出快照贴 PROGRESS → 找老师写第 1 篇博客</li>
+</ul>
+</div>
+
+<div class="box analogy"><span class="bt">收官感言</span>
+第 1 篇给你的不是知识清单,而是一套<strong>裁判系统</strong>:roofline 判
+"该多快",profiler 判"为什么没这么快",harness 判"改了之后到底快没快"。
+带着这套系统进第 2 篇,vLLM 的每个机制你都能问出那句最锋利的话:
+<strong>"它在我的 3070 上,兑现了带宽的百分之几?"</strong>
+</div>
+
+<div class="actions" data-lesson="1.7">
+  <button class="mkbtn" data-f="t" onclick="mark('1.7','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('1.7','p')">标记实践完成</button>
+  <span class="hint">理论=能定义四指标+负载模型;实践=harness+校准报告已入库</span>
+</div>
+
+<div class="nextnav">
+  <a href="p1-6.html"><span class="dir">← 上一讲</span>1.6 Profiler 入门</a>
+  <a class="nx" href="../dashboard.html"><span class="dir">第 1 篇完成 →</span>回进度台导出快照,约老师写博客</a>
+</div>
+<footer>勾选与 <a href="../dashboard.html">进度台</a> 同步 · 卡住随时回对话提问</footer>
+</article>
+</div>
+<script src="course.js"></script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第0篇 · 热身与已有基础 — TinyLLM 课程</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav><div class="navin">
+  <a class="brand" href="index.html">🎓 TinyLLM 课程</a>
+  <span class="crumb">第0篇 · 热身与已有基础(4 讲,约 3h)</span>
+  <div class="grow"></div>
+  <a class="pg off">← 上一篇</a>
+  <a class="pg" href="p1-1.html">第1篇 1.1 →</a>
+</div></nav>
+<div class="wrap">
+<article>
+<h1>第 0 篇 · 热身与已有基础</h1>
+<div class="metabox">
+  <span>4 讲 · 约 3 小时</span><span>类型:复习</span><span>先修:无</span>
+</div>
+<p class="lead">
+你已经完成了阶段 1(部署)、1.5(推理环境)、2(量化)——这不是零基础开始,
+而是<strong>把"做过"升级为"能讲出来"</strong>。面试和后续课程的每一讲,
+都默认你把这三段经历变成了自己的语言。本篇就是做这件事:重读三篇博客,
+用自测题检验,能脱稿回答才算过。
+</p>
+
+<h2>0.1 课程总览与学习方法(理论 1h)</h2>
+<p>这门课怎么运作,一图看懂:</p>
+<pre class="diagram">你的学习循环(粒度 = 一篇):
+
+  [老师备课]          [你自学]                [你问老师]            [共同沉淀]
+  制作该篇课件   →   读课件→做实践→自测  →   卡住就问,随时对话  →  你交实验日志,
+  (滚动:学第N篇时                                      老师起草博客,
+   备第N+1篇)                                          你审阅定稿
+        ↑                                                                │
+        └────────────────── 你的问题反哺下一篇课件 ←──────────────────────┘
+
+进度记录:讲级勾选(本页底部按钮 / 进度台) · 篇级里程碑(PROGRESS.md + 博客)</pre>
+<p>每讲的固定仪式:<strong>读课件 → 做实践(产出物入库)→ 过自测 → 勾完成</strong>。
+勾选标准写在按钮旁:理论 = 能向别人复述;实践 = 产出物已提交到仓库。</p>
+<div class="box keypoint"><span class="bt">为什么测量篇(第1篇)排最前</span>
+课程后面每个结论——"量化为什么提速""FlashAttention 为什么省显存"——
+都要用第 1 篇的工具(带宽实测、roofline、profiler、统一基准)去验证。
+先有尺子,再量东西。
+</div>
+<div class="actions" data-lesson="0.1">
+  <button class="mkbtn" data-f="t" onclick="mark('0.1','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('0.1','p')">标记实践完成</button>
+  <span class="hint">理论=能复述课程循环;实践=打开过课件中心与进度台</span>
+</div>
+
+<h2>0.2 复习 · 模型部署(阶段 1)</h2>
+<p>重读 <a href="../01-模型部署篇.md">01-模型部署篇</a>(用编辑器或预览器打开),
+重点回忆:</p>
+<ul>
+  <li><strong>多轮对话</strong>的本质:把历史消息逐轮拼进 prompt 重新推理(LLM 本身无状态)</li>
+  <li><code>chat template</code>:把消息列表格式化成模型训练时的格式(<code>&lt;|start_header_id|&gt;</code> 等)</li>
+  <li><code>device_map="auto"</code>:accelerate 决定每层放哪个设备;单卡就全放 GPU</li>
+</ul>
+<div class="quiz"><div class="qt">✅ 复习自测</div>
+  <details><summary>多轮对话的上下文是如何传给模型的?</summary>
+    <div class="ans">模型本身无记忆。应用层维护 messages 列表,每次请求把完整历史
+    经 chat template 拼成 prompt 重新前向——所以对话越长,每次推理的输入越长
+    (这也预告了第 2 篇 KV cache 与 prefix caching 的价值)。</div></details>
+  <details><summary>device_map="auto" 做了什么?</summary>
+    <div class="ans">accelerate 按各设备显存把模型各层做分片放置;单卡场景等效于整体搬到 GPU,
+    真正的价值在多卡/卸载场景(CPU offload)。</div></details>
+</div>
+<div class="actions" data-lesson="0.2">
+  <button class="mkbtn" data-f="t" onclick="mark('0.2','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('0.2','p')">标记实践完成</button>
+  <span class="hint">实践=启动 code/deployment/start.bat 成功对话一轮</span>
+</div>
+
+<h2>0.3 复习 · 推理环境(阶段 1.5)</h2>
+<p>重读 <a href="../02-AI推理优化环境搭建篇.md">02-环境搭建篇</a>。当时你测得:
+Transformers 原生 ~15.9 tok/s,vLLM bs=8 时 349.6 tok/s,<strong>22×</strong>。</p>
+<div class="box analogy"><span class="bt">留一个钩子</span>
+现在凭直觉回答:"vLLM 为什么快?"你大概会说"批处理""PagedAttention"——
+都对,但都是名词。第 1 篇 1.5 讲会给你一个<strong>数字推导</strong>:
+349.6 tok/s 距离这块卡的理论上限还有多远、差在哪。学完那讲再回看这个问题,
+你会明显感觉到自己的进步。
+</div>
+<div class="quiz"><div class="qt">✅ 复习自测</div>
+  <details><summary>vLLM 比 Transformers 快的核心机制是什么?(直觉版回答即可)</summary>
+    <div class="ans">连续批处理(请求级动态调度,而不是攒一整批)+ PagedAttention
+    (分页管理 KV cache,显存浪费极小)→ 高并发下 GPU 始终有活干。
+    精确版答案在第 1/2 篇逐步建立。</div></details>
+</div>
+<div class="actions" data-lesson="0.3">
+  <button class="mkbtn" data-f="t" onclick="mark('0.3','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('0.3','p')">标记实践完成</button>
+  <span class="hint">实践=无(本讲为阅读复习)</span>
+</div>
+
+<h2>0.4 复习 · 量化初探(阶段 2)</h2>
+<p>重读 <a href="../03-模型量化篇.md">03-模型量化篇</a> 与
+<a href="../../code/quantization/docs/量化基础概念.md">量化基础概念</a>。必须脱口而出的数字:</p>
+<ul>
+  <li>模型体积 4.61 GB → <strong>0.98 GB</strong>(GPTQ 4-bit,4.72× 压缩)</li>
+  <li>峰值显存 2.32 GB → <strong>1.01 GB</strong>(省 56%)</li>
+  <li>PPL 3.197 → <strong>3.271</strong>(损失仅 2.29%)</li>
+  <li>关键反直觉结论:<strong>小模型上量化不提速</strong>(甚至变慢)</li>
+</ul>
+<div class="box keypoint"><span class="bt">最重要的钩子</span>
+"量化在小模型上不提速"——这句话你当时是从端到端数据里<strong>看出</strong>的。
+第 1 篇 1.5 讲会让你<strong>算出</strong>它:为什么上限翻了 4 倍而实测没变?
+学完你就能预判"多大模型量化才开始提速",这正是 3.6 讲 7B 实验的假设来源。
+</div>
+<div class="quiz"><div class="qt">✅ 复习自测</div>
+  <details><summary>动态量化与静态量化的本质区别?</summary>
+    <div class="ans">动态(bnb):加载时按需转换权重格式,不产出新模型文件,每次加载都要做;
+    静态(GPTQ):用校准数据离线计算每层最优 scale,产出可保存、可分发的量化模型。
+    工程上是"即插即用"与"一次投入长期复用"的取舍。</div></details>
+  <details><summary>GPTQ 的压缩比与精度代价各是多少?</summary>
+    <div class="ans">4.72×(4.61→0.98 GB);PPL 3.197→3.271,损失 2.29%,输出仍可读。</div></details>
+</div>
+<div class="actions" data-lesson="0.4">
+  <button class="mkbtn" data-f="t" onclick="mark('0.4','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('0.4','p')">标记实践完成</button>
+  <span class="hint">实践=无(阅读复习);四讲全过后,去进度台导出快照,开始第 1 篇</span>
+</div>
+
+<div class="nextnav">
+  <a href="index.html"><span class="dir">← 返回</span>课件中心</a>
+  <a class="nx" href="p1-1.html"><span class="dir">第 1 篇开课 →</span>1.1 GPU 计算模型:SM、warp 与 Tensor Core</a>
+</div>
+<footer>勾选与 <a href="../dashboard.html">进度台</a> 同步 · 卡住随时回对话提问</footer>
+</article>
+</div>
+<script src="course.js"></script>
+</body>
+</html>

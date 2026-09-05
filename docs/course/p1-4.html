@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1.4 Roofline 模型与算术强度 — TinyLLM 课程</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav><div class="navin">
+  <a class="brand" href="index.html">🎓 TinyLLM 课程</a>
+  <span class="crumb">第1篇 · 4/7 · GPU 体系结构与测量</span>
+  <div class="grow"></div>
+  <a class="pg" href="p1-3.html">← 1.3</a>
+  <a class="pg" href="p1-5.html">1.5 →</a>
+</div></nav>
+<div class="wrap">
+<article>
+<h1>1.4 Roofline 模型与算术强度</h1>
+<div class="metabox">
+  <span>理论 · 1.5h</span><span>先修:1.3</span>
+  <span>产出:fundamentals/docs/roofline-推导.md</span>
+</div>
+<p class="lead">
+roofline 是把 1.2 讲的"两种饱和"变成<strong>一张可以计算的图</strong>:
+任何 kernel 的性能上限,都能用两个数(算力、带宽)和一个比值(算术强度)
+算出来。它是面试里"判断这个 workload 瓶颈在哪"的标准解法,
+也是 1.5 讲推导 LLM decode 的数学工具。
+</p>
+
+<h2>1. 算术强度(Arithmetic Intensity, AI)</h2>
+<div class="box keypoint"><span class="bt">定义</span>
+AI = FLOPs / Bytes = 每从 HBM 搬 1 字节,做多少次浮点运算。<br>
+"重计算、轻访存"的 kernel AI 高;"搬运工"式 kernel AI 低。
+</div>
+<p>三个例子热身(自己先口算,再看答案):</p>
+<ul>
+  <li><strong>向量加</strong> c=a+b(每元素):2 次读 + 1 次写 = 12 字节(fp32),2 FLOPs → AI = 1/6,极低</li>
+  <li><strong>matmul n×n</strong>:FLOPs = 2n³,Bytes = 3 个矩阵 × n² × 2B(fp16) → AI = n/3;
+      n=4096 时 AI ≈ 1365,极高</li>
+  <li><strong>LLM decode(逐 token)</strong>:每生成 1 token,读全部权重(1.24B 参数 × 2B),
+      FLOPs ≈ 2×参数量 → AI ≈ 2×1.24e9 / 2.48e9 = <strong>1</strong>,低到贴地——1.5 讲主角</li>
+</ul>
+
+<h2>2. 屋顶公式</h2>
+<div class="box keypoint"><span class="bt">Roofline 定理</span>
+<strong>性能上限 = min( 峰值算力, 带宽 × AI )</strong><br>
+用你 1.3 讲的实测值代:上限 = min( ~30 TFLOPS(fp16 实测), ~370 GB/s(实测) × AI )<br>
+两条线的交点叫<strong>平衡点(ridge point)</strong>:AI 低于它,memory-bound;
+高于它,compute-bound。
+</div>
+<pre class="diagram">性能上限(TFLOPS, log 轴)
+ 30 ┤              ╭━━━━━━━━━━━ 计算屋顶(实测算力)
+    │             ╱
+    │            ╱   ← 你在这(1.5讲:LLM decode, AI≈1, 上限≈0.37 TFLOPS
+ 10 ┤           ╱        = 370GB/s × 1 → 远低于 30T ⇒ memory-bound 铁证)
+    │          ╱
+    │         ╱  斜线: 带宽屋顶(实测带宽,斜率=370GB/s)
+  1 ┤        ╱
+    │       ╱  ← 向量加 AI=1/6 也在这条线上,更靠左
+  0 └──────┴──────────────────────────→ 算术强度 AI (FLOP/Byte)
+          ~80        1365(matmul 4096 在最右侧,compute-bound)</pre>
+<p>用实测值算平衡点:30e12 / 370e9 ≈ <strong>81 FLOP/Byte</strong>。
+(若用标称 40T/448G ≈ 89,同一量级——两个都记,面试报实测更专业。)</p>
+
+<h2>3. 用 roofline 分析问题的标准姿势</h2>
+<p>面试题往往是:"某个 kernel 实测 X,瓶颈在哪?怎么优化?"四步:</p>
+<ol>
+  <li>算 AI(FLOPs 与 Bytes 各是多少,来自问题条件)</li>
+  <li>画/查 roofline,得出理论上限(带宽×AI 还是算力)</li>
+  <li>对比实测:接近上限 → 优化空间在"换算法/减少工作量";远低于上限 →
+      优化空间在"访存模式/并行度/启动开销"(1.6 讲 profiler 找原因)</li>
+  <li>给对策:memory-bound → 减字节(量化!)或提复用(tiling);compute-bound → 换更快的算法或用 Tensor Core</li>
+</ol>
+<div class="box analogy"><span class="bt">类比</span>
+roofline = 一张"公路限速图":算力屋顶是发动机极速,带宽屋顶是道路限速。
+AI 是你的车重排量比——轻载小车(AI 低)先撞道路限速,重卡满载(AI 高)
+先撞发动机极限。优化前先问:我到底被哪个卡住?
+</div>
+<div class="box pitfall"><span class="bt">常见误区</span>
+① AI 的 Bytes 只算 HBM 流量(寄存器/SMEM 内的复用不算);
+② batch 上升会抬 AI(权重读被摊薄)——这正是"加大 batch 提吞吐"的数学本质,
+也是 1.5 讲推导"吞吐先升后饱和"的关键;
+③ roofline 给的是上限,达不到不代表瓶颈判断错,先看 1.6 讲的 profile。
+</div>
+
+<div class="quiz"><div class="qt">✅ 自测(面试向,点击揭晓)</div>
+  <details><summary>1. kernel A:每读 4B 做 8 FLOPs;kernel B:每读 8B 做 4 FLOPs。
+      在 3070(实测 30T/370G)上各是什么 bound?上限多少?</summary>
+    <div class="ans">平衡点 ≈ 81 FLOP/Byte。<br>
+    A:AI = 8/4 = 2 &lt; 81 → memory-bound,上限 = 370G×2 = 0.74 TFLOPS;<br>
+    B:AI = 4/8 = 0.5 &lt; 81 → memory-bound,上限 = 370G×0.5 = 0.185 TFLOPS。<br>
+    追问"怎么把 A 提到 compute-bound?"→ AI 要抬到 81,即每 4B 数据做 324 FLOPs,
+    靠数据复用(tiling/缓存)而不是加计算。</div></details>
+  <details><summary>2. 为什么 matmul 的 AI 随规模 n 增大而升高?</summary>
+    <div class="ans">FLOPs ~ n³,数据 ~ n²,AI ~ n/3。规模越大,每份数据被复用得越充分
+    (一个元素参与一整行/列的乘加)。这就是"大矩阵吃满 Tensor Core"的数学原因,
+    也是 GPU 上算子融合(tile 内复用)的动机。</div></details>
+  <details><summary>3. 一个 kernel 实测 5 TFLOPS,roofline 上限是 25 TFLOPS。
+      你的第一反应是什么?</summary>
+    <div class="ans">不是"优化计算",而是先问"为什么只有上限的 20%"——
+    可能是访存模式差(未合并)、并行度不足、启动开销大、warp 分歧等。
+    下一步拿 profiler(1.6 讲)看时间线定位,而不是急着改算法。</div></details>
+</div>
+
+<div class="lab"><div class="lt">🔬 实践(约 45min)</div>
+<ul>
+  <li>写 <code>fundamentals/docs/roofline-推导.md</code>:用你的实测数(1.3)算平衡点</li>
+  <li>手绘/工具画 roofline 图,标注:计算屋顶、带宽屋顶、平衡点、
+      向量加(AI≈1/6)、matmul-4096(AI≈1365)、LLM decode(AI≈1,1.5 讲预告)</li>
+  <li>做 3 道手算练习(自己出题或用自测题),过程写进笔记</li>
+  <li>git 提交</li>
+</ul>
+</div>
+
+<div class="actions" data-lesson="1.4">
+  <button class="mkbtn" data-f="t" onclick="mark('1.4','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('1.4','p')">标记实践完成</button>
+  <span class="hint">理论=能徒手做自测题 1;实践=推导笔记+图已入库</span>
+</div>
+
+<div class="nextnav">
+  <a href="p1-3.html"><span class="dir">← 上一讲</span>1.3 实测你的 3070</a>
+  <a class="nx" href="p1-5.html"><span class="dir">下一讲(本篇核心)→</span>1.5 LLM decode 为什么 memory-bound:逐字节推导</a>
+</div>
+<footer>勾选与 <a href="../dashboard.html">进度台</a> 同步 · 卡住随时回对话提问</footer>
+</article>
+</div>
+<script src="course.js"></script>
+</body>
+</html>

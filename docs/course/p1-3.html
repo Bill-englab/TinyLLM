@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1.3 实测你的 3070:带宽与算力 — TinyLLM 课程</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav><div class="navin">
+  <a class="brand" href="index.html">🎓 TinyLLM 课程</a>
+  <span class="crumb">第1篇 · 3/7 · GPU 体系结构与测量</span>
+  <div class="grow"></div>
+  <a class="pg" href="p1-2.html">← 1.2</a>
+  <a class="pg" href="p1-4.html">1.4 →</a>
+</div></nav>
+<div class="wrap">
+<article>
+<h1>1.3 实测你的 3070:带宽与算力</h1>
+<div class="metabox">
+  <span>实践 · 2h</span><span>先修:1.2</span>
+  <span>产出:fundamentals/bench_bandwidth.py + 日志</span>
+</div>
+<p class="lead">
+前面两讲的所有数字都来自规格书。这一讲你自己量:<strong>有效带宽</strong>和
+<strong>实际算力</strong>。这两个数是 1.4 讲 roofline 的真实纵轴——
+用标称值画的屋顶是理论,用实测值画的屋顶才是你的 kernel 能摸到的天花板。
+</p>
+
+<h2>1. 测什么、怎么测才对</h2>
+<h3>有效带宽(effective bandwidth)</h3>
+<p>定义:<code>有效带宽 = 实际搬运的字节数 / 耗时</code>。三个关键技巧:</p>
+<ul>
+  <li><strong>数据要大</strong>:至少 1GB,把 kernel 启动开销摊薄到可忽略</li>
+  <li><strong>先预热再计时</strong>:跑几次热身,再 <code>torch.cuda.synchronize()</code>
+      后用 <code>perf_counter</code> 卡表——<strong>GPU 是异步的,不同步就计时是新手第一大坑</strong></li>
+  <li><strong>算清字节数</strong>:拷贝是"读一份 + 写一份",字节 = 2 × 数据量</li>
+</ul>
+<h3>算力(TFLOPS)</h3>
+<p>用大矩阵 matmul(fp16 走 Tensor Core),FLOPs = 2×n³。同样预热 + 同步 + 多次取均值。
+矩阵要够大(≥4096),否则启动开销和数据供给跟不上计算单元。</p>
+
+<h2>2. 参考实现(可直接用,也可自己先写再看)</h2>
+<pre><code>#!/usr/bin/env python3
+"""bench_bandwidth.py — 实测 3070 有效带宽与算力
+运行: conda activate inference_opt && python bench_bandwidth.py
+"""
+import torch, time, datetime
+from pathlib import Path
+
+def bench_gpu(n_bytes=1 &lt;&lt; 30, n_mat=4096, iters=20, warmup=5):
+    dev = 'cuda'
+    print(f"设备: {torch.cuda.get_device_name(0)}")
+
+    # ---- 有效带宽:大张量 d2d 拷贝(读 n + 写 n = 2n 字节) ----
+    a = torch.empty(n_bytes, dtype=torch.uint8, device=dev)
+    b = torch.empty_like(a)
+    for _ in range(warmup): b.copy_(a)
+    torch.cuda.synchronize()
+    t0 = time.perf_counter()
+    for _ in range(iters): b.copy_(a)
+    torch.cuda.synchronize()
+    dt = (time.perf_counter() - t0) / iters
+    bw = 2 * n_bytes / dt / 1e9
+    print(f"[拷贝带宽] {n_bytes/2**30:.1f}GB × 2方向 / {dt*1e3:.2f}ms = {bw:.0f} GB/s (标称 448)")
+
+    # ---- 算力:fp16 matmul(FLOPs = 2·n³) ----
+    x = torch.randn(n_mat, n_mat, dtype=torch.float16, device=dev)
+    y = torch.randn_like(x)
+    for _ in range(warmup): x @ y
+    torch.cuda.synchronize()
+    t0 = time.perf_counter()
+    for _ in range(iters): x @ y
+    torch.cuda.synchronize()
+    dt = (time.perf_counter() - t0) / iters
+    tf = 2 * n_mat**3 / dt / 1e12
+    print(f"[matmul {n_mat}] {dt*1e3:.2f}ms → {tf:.1f} TFLOPS (fp16, 理论 ~40)")
+
+if __name__ == '__main__':
+    print(f"时间: {datetime.datetime.now():%Y-%m-%d %H:%M:%S}")
+    bench_gpu()
+    print("注: 拷贝带宽受拷贝实现限制,matmul 才是 Tensor Core 的主场")</code></pre>
+
+<h2>3. 怎么解读结果(预期值)</h2>
+<table>
+<tr><th>测量</th><th>预期实测</th><th>标称/理论</th><th>典型效率</th></tr>
+<tr><td>拷贝带宽</td><td>~330-400 GB/s</td><td>448 GB/s</td><td>75-90%</td></tr>
+<tr><td>fp16 matmul</td><td>~25-35 TFLOPS</td><td>~40 TFLOPS</td><td>60-85%(看形状)</td></tr>
+</table>
+<p><strong>为什么达不到 100%?</strong>把你能想到的原因写进日志(不少于 3 条),参考:</p>
+<ul>
+  <li>kernel 启动与调度开销(数据不够大时占比高)</li>
+  <li>拷贝引擎/访存模式本身的效率上限(读-写转向、bank/通道冲突)</li>
+  <li>matmul 的数据供给:矩阵要反复从 HBM 读,带宽成为计算的下水道</li>
+  <li>频率/功耗墙:220W TDP 下长时间高负载会降频</li>
+  <li>其他占用:Windows 桌面在同一块卡上(你的环境常态占 ~2.8GB 显存和部分带宽)</li>
+</ul>
+<div class="box keypoint"><span class="bt">本讲真正的产出是习惯</span>
+"预热 + 同步 + 多次 + 报均值"这四个词,是后面 1.7 讲统一 harness 的雏形;
+"实测值 vs 标称值 + 差距解释"这个格式,是你此后汇报任何性能数据的格式。
+</div>
+
+<div class="quiz"><div class="qt">✅ 自测(面试向,点击揭晓)</div>
+  <details><summary>1. 为什么有效带宽只有标称的 70-90%?</summary>
+    <div class="ans">标称是"引脚理论峰值"(位宽×频率),实际受:访存模式效率(读写转向/通道冲突)、
+    kernel 启动与同步开销、功耗墙降频、其他占用者分走带宽等影响。
+    专业的回答方式:给出实测值 + 主要原因清单,而不是背一个百分比。</div></details>
+  <details><summary>2. 测 GPU 时间为什么必须 synchronize?不测拷贝只测 matmul 行不行?</summary>
+    <div class="ans">CUDA 调用是异步的:CPU 发出指令立即返回,GPU 在后台执行。
+    不同步就计时,量到的是"发射指令的时间"。
+    只测 matmul 不行——matmul 同时吃带宽和算力,算出的 TFLOPS 会被数据供给拖低;
+    拷贝测试才把"纯搬运能力"单独隔离出来。两者都要,分别对应 roofline 的两个顶点。</div></details>
+  <details><summary>3. 如果把矩阵从 4096 改成 256,TFLOPS 会怎么变?为什么?</summary>
+    <div class="ans">大幅下降。小矩阵:①算得太快,启动开销占比飙升;
+    ②并行度不足(256² 的任务喂不饱 46 间教室);③数据量小,HBM 供给的
+    "起步延迟"摊不平。这解释了为什么小 batch 的 LLM decode 延迟高——同一个道理。</div></details>
+</div>
+
+<div class="lab"><div class="lt">🔬 实践(约 90min)</div>
+<ul>
+  <li>建目录 <code>code/optimization/fundamentals/</code>,写 <code>bench_bandwidth.py</code>(参考上面实现,鼓励自己先盲写)</li>
+  <li>跑 3 轮,记录输出(带宽/TFLOPS 各 3 个值,观察波动)</li>
+  <li>尝试改参数再跑:n_bytes 减到 64MB 看带宽掉多少;n_mat 改 512/2048/8192 画 TFLOPS 曲线</li>
+  <li>写日志 <code>fundamentals/logs/bench_bandwidth_日期.md</code>:实测值表 + 差距解释(≥3 条) + 参数敏感性观察</li>
+  <li>把实测带宽/算力两个数更新进 1.1 的规格表(标"实测")——它们是 1.4 讲的输入</li>
+  <li>git 提交(脚本 + 日志)</li>
+</ul>
+</div>
+
+<div class="actions" data-lesson="1.3">
+  <button class="mkbtn" data-f="t" onclick="mark('1.3','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('1.3','p')">标记实践完成</button>
+  <span class="hint">理论=能说清四个测准要点;实践=脚本+日志已入库,实测数已回填笔记</span>
+</div>
+
+<div class="nextnav">
+  <a href="p1-2.html"><span class="dir">← 上一讲</span>1.2 内存层级</a>
+  <a class="nx" href="p1-4.html"><span class="dir">下一讲 →</span>1.4 Roofline 模型与算术强度</a>
+</div>
+<footer>勾选与 <a href="../dashboard.html">进度台</a> 同步 · 卡住随时回对话提问</footer>
+</article>
+</div>
+<script src="course.js"></script>
+</body>
+</html>

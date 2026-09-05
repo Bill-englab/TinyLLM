@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1.6 Profiler 入门:nsys 与 torch profiler — TinyLLM 课程</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav><div class="navin">
+  <a class="brand" href="index.html">🎓 TinyLLM 课程</a>
+  <span class="crumb">第1篇 · 6/7 · GPU 体系结构与测量</span>
+  <div class="grow"></div>
+  <a class="pg" href="p1-5.html">← 1.5</a>
+  <a class="pg" href="p1-7.html">1.7 →</a>
+</div></nav>
+<div class="wrap">
+<article>
+<h1>1.6 Profiler 入门:nsys 与 torch profiler</h1>
+<div class="metabox">
+  <span>实践 · 2h</span><span>先修:1.3</span>
+  <span>产出:fundamentals/logs/nsys-初体验.md</span>
+</div>
+<p class="lead">
+1.5 讲算出了天花板,并猜测了"差距来自哪些开销"。profiler 就是<strong>裁决者</strong>:
+它把执行过程拍成"时间线胶片",时间花在哪个 kernel、卡在哪次同步、
+空隙有多大,一目了然。工具就两个:nsys(看全局)和 torch profiler(嵌在代码里看细节)。
+</p>
+
+<h2>1. 先认清工具箱(以及 WSL2 的限制)</h2>
+<table>
+<tr><th>工具</th><th>看什么</th><th>你的环境</th></tr>
+<tr><td><strong>nsys</strong>(Nsight Systems)</td><td>整条时间线:CPU 线程、GPU kernel、内存拷贝、空隙</td><td>✅ WSL2 可用(时间线级)</td></tr>
+<tr><td><strong>torch profiler</strong></td><td>代码级:哪个算子/调用吃时间,可导出 chrome trace</td><td>✅ 随时可用的首选</td></tr>
+<tr><td>ncu(Nsight Compute)</td><td>单 kernel 深度分析(占用率/访存效率)</td><td>❌ WSL2 不可用(内核计数器权限)</td></tr>
+<tr><td>nvidia-smi</td><td>宏观利用率/显存/功耗</td><td>✅ 但"GPU 利用率 100%"不代表满载(见下)</td></tr>
+</table>
+<div class="box pitfall"><span class="bt">坑:别信 nvidia-smi 的"GPU-Util"</span>
+它统计的是"<strong>有 kernel 在跑的时间占比</strong>",不是算力利用率——
+一群极低效的小 kernel 也能让它显示 100%。判断真实效率要靠 roofline(理论)
++ profiler(实证)。<strong>报"GPU 利用率"当业绩,是 infra 面试的减分项。</strong>
+</div>
+
+<h2>2. torch profiler:五分钟上手(先用这个)</h2>
+<pre><code>import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+MODEL = "/mnt/d/LLM_Project/code/model/llama-3.2-1b-instruct/LLM-Research/Llama-3___2-1B-Instruct"
+tok = AutoTokenizer.from_pretrained(MODEL)
+model = AutoModelForCausalLM.from_pretrained(MODEL, dtype=torch.float16,
+                                             device_map="auto").eval()
+ids = tok("用三句话解释什么是推理优化。", return_tensors="pt").to("cuda")
+
+# 预热(必须:首次运行含编译/缓存等一次性开销)
+for _ in range(3):
+    model.generate(**ids, max_new_tokens=20, do_sample=False)
+
+with torch.profiler.profile(
+    activities=[torch.profiler.ProfilerActivity.CPU,
+                torch.profiler.ProfilerActivity.CUDA],
+) as prof:
+    model.generate(**ids, max_new_tokens=50, do_sample=False)
+
+# 表格:按 GPU 自耗时排序,看谁吃时间
+print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=15))
+# 可选:导出 chrome trace,浏览器打开 chrome://tracing 查看
+prof.export_chrome_trace("trace.json")</code></pre>
+<p><strong>读表三问</strong>:① self CUDA time 前三名是什么 kernel?
+② CPU 总时间与 CUDA 总时间的比例(谁在等谁)?③ 有没有意外的
+<code>cudaMemcpy</code>/<code>synchronize</code> 在名单里?</p>
+
+<h2>3. nsys:看全局时间线</h2>
+<p>安装(WSL2 Ubuntu):<code>sudo apt install nsight-systems-cli</code>
+(或从 NVIDIA 官网下 Linux target 版)。采集与查看:</p>
+<pre><code># 采集:包裹你的生成脚本
+nsys profile -o rep1 python gen_tokens.py
+# 汇总统计(kernel 排行)
+nsys stats rep1.nsys-rep
+# 图形界面:把 rep1.nsys-rep 拷到 Windows,用 Nsight Systems GUI 打开看时间线</code></pre>
+<pre class="diagram">时间线(横轴=时间)长这样:
+CPU 行:  ████发射kernel████████发射██████           ← CPU 只管发射指令
+GPU 行:      ▓▓▓  ▓▓▓   ▓▓▓  ▓▓▓   ▓▓▓           ← kernel 实际执行
+              ↑空隙↑  ↑空隙↑  ↑空隙↑
+              空隙 = kernel 之间的启动/调度延迟
+              (小 batch decode 时空隙占比惊人 → 4.5 讲 CUDA Graph 的靶子)</pre>
+<div class="box keypoint"><span class="bt">nsys 的三个经典发现</span>
+① <strong>空隙大</strong> → kernel 启动开销主导(CUDA Graph / torch.compile 的适应症);
+② <strong>细碎 kernel 密密麻麻</strong> → 该做算子融合(compile / Triton);
+③ <strong>Memcpy 比预期多</strong> → 数据在 CPU-GPU 间反复搬运(代码结构问题)。
+这三个发现分别对应第 4 篇的三个主题——profiler 是把"症状"接到"药方"的桥梁。
+</div>
+
+<h2>4. 工作方法:理论 → 假设 → 实证</h2>
+<div class="box keypoint"><span class="bt">本课程固定的分析姿势</span>
+1)先用 1.4/1.5 的公式算理论上限;2)对比实测提出假设
+("我猜差距主要来自 X");3)用 profiler 验证/推翻;4)结论写进日志。
+<strong>顺序不能反</strong>——没有假设的 profile 是"看热闹",
+带着假设的 profile 才是"做实验"。
+</div>
+
+<div class="quiz"><div class="qt">✅ 自测(面试向,点击揭晓)</div>
+  <details><summary>1. 时间线上 kernel 之间大量空隙,说明什么?怎么治?</summary>
+    <div class="ans">CPU 发射 kernel 的速度跟不上 GPU 消化的速度
+    (启动开销 ~几 μs/个,小 kernel 执行仅几 μs,空隙占比高)。
+    药方:① CUDA Graph 把几百个 kernel 录成一张图一次提交;
+    ② torch.compile 减少算子数量;③ 增大 batch 让单 kernel 变重。</div></details>
+  <details><summary>2. nvidia-smi 显示 GPU-Util 100%,吞吐却只有理论上限 20%,矛盾吗?</summary>
+    <div class="ans">不矛盾。GPU-Util 只统计"有 kernel 在执行的时间占比",
+    不衡量 kernel 效率。可能整条时间线被低效 memory-bound kernel 塞满。
+    真正的判断标准:实测吞吐/带宽上限(roofline 效率)+ 时间线上空隙与 kernel 构成。</div></details>
+  <details><summary>3. 什么时候用 torch profiler,什么时候上 nsys?</summary>
+    <div class="ans">torch profiler:嵌入代码、快速定位算子级热点,零安装成本,首选;
+    nsys:需要看<strong>全局时间线</strong>(CPU/GPU 交互、空隙、多流)或不想改代码时。
+    两者互补:先 nsys 找区间,再 torch profiler 深挖该区间;ncu(本环境不可用)
+    则用于单 kernel 的微架构级分析。</div></details>
+</div>
+
+<div class="lab"><div class="lt">🔬 实践(约 90min)</div>
+<ul>
+  <li>写 <code>fundamentals/gen_tokens.py</code>:加载 1B 模型生成 50 token(参考上面代码)</li>
+  <li>torch profiler 跑通,把"self CUDA time 前 15"表格存进日志;
+     若导出 chrome trace,记录 top-3 kernel 名字</li>
+  <li>装 nsys 并采集同一脚本;若 GUI 可用,贴一张时间线截图,
+     标注一个空隙;若 GUI 不可用,用 <code>nsys stats</code> 的 kernel 排行代替</li>
+  <li>写 <code>fundamentals/logs/nsys-初体验.md</code>:①top kernel 三名+占比
+     ②空隙观察 ③对照 1.5 讲的差距假设,哪些被证实/推翻 ④一句话结论</li>
+  <li>git 提交</li>
+</ul>
+</div>
+
+<div class="actions" data-lesson="1.6">
+  <button class="mkbtn" data-f="t" onclick="mark('1.6','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('1.6','p')">标记实践完成</button>
+  <span class="hint">理论=能说清三工具分工;实践=profiling 报告已入库</span>
+</div>
+
+<div class="nextnav">
+  <a href="p1-5.html"><span class="dir">← 上一讲</span>1.5 decode memory-bound 推导</a>
+  <a class="nx" href="p1-7.html"><span class="dir">下一篇收官 →</span>1.7 统一基准 harness</a>
+</div>
+<footer>勾选与 <a href="../dashboard.html">进度台</a> 同步 · 卡住随时回对话提问</footer>
+</article>
+</div>
+<script src="course.js"></script>
+</body>
+</html>

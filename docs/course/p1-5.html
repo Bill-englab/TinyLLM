@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1.5 LLM decode 为什么 memory-bound:逐字节推导 — TinyLLM 课程</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav><div class="navin">
+  <a class="brand" href="index.html">🎓 TinyLLM 课程</a>
+  <span class="crumb">第1篇 · 5/7 · GPU 体系结构与测量 ★核心</span>
+  <div class="grow"></div>
+  <a class="pg" href="p1-4.html">← 1.4</a>
+  <a class="pg" href="p1-6.html">1.6 →</a>
+</div></nav>
+<div class="wrap">
+<article>
+<h1>1.5 ★LLM decode 为什么 memory-bound:逐字节推导</h1>
+<div class="metabox">
+  <span>核心 · 2h</span><span>先修:1.4</span>
+  <span>产出:fundamentals/docs/decode-memory-bound-推导.md</span>
+</div>
+<p class="lead">
+这是第 1 篇的顶点,也可能是整个课程最重要的一讲。你要用 1.2-1.4 的工具,
+<strong>亲手算出</strong>两件事:这块 3070 跑 LLaMA-1B 的 decode 吞吐上限;
+以及阶段 2 那个"量化不提速"的反直觉结论的数学真相。完成后,
+你对 LLM 推理的理解将从"经验"变成"可计算"。
+</p>
+
+<h2>1. 第一步:decode 一个 token,到底要读多少字节?</h2>
+<p>自回归生成的每一步,要把<strong>整个模型的每一层权重都过一遍</strong>
+(1 个 token 也要激活所有参数——这是 dense 模型的本性):</p>
+<pre class="diagram">LLaMA-3.2-1B-Instruct:1.24B 参数(你已在 config.json 核实过层数/KV 头)
+
+主要读入(每 token):
+  权重      1.24e9 × 2B(fp16)  ≈ 2.48 GB   ← 绝对大头
+  KV cache  32KB/token × 当前长度(4k 上下文时 ≈ 0.13 GB)
+  输入嵌入  ~0.26 MB(token id → 向量),可忽略
+
+主要 FLOPs(每 token):
+  ≈ 2 × 参数量 = 2.48 GFLOPs(乘了再加,每个参数约 2 次浮点操作)
+
+⇒ AI = 2.48e9 FLOPs / 2.48e9 Bytes ≈ 2 FLOP/Byte(把 KV 计入还会更低)</pre>
+<div class="box keypoint"><span class="bt">结论一</span>
+LLM decode 的 AI ≈ 1~2 FLOP/Byte,而 3070 平衡点 ≈ 81。
+<strong>偏离平衡点 40-80 倍,是教科书级的 memory-bound。</strong>
+此时性能上限 = 带宽 × AI,与算力几乎无关。
+</div>
+
+<h2>2. 第二步:算吞吐上限(batch=1)</h2>
+<pre class="diagram">fp16:  每读 2.48 GB 产出 1 token
+       上限 = 448 GB/s ÷ 2.48 GB/token ≈ 180 tok/s(标称带宽)
+       实测带宽口径:≈ 370 ÷ 2.48 ≈ 150 tok/s
+
+GPTQ 4-bit: 权重读量 ≈ 0.62 GB(0.5B 权重 + scale/zero 元数据)
+       上限 = 448 ÷ 0.62 ≈ 720 tok/s  ← 上限翻了 ~4 倍!</pre>
+<p><strong>对照你的阶段 2 实测</strong>(去 <code>code/quantization/logs/</code> 查
+bench_throughput 的数字,填进你的推导笔记):fp16 和 GPTQ 的实测 tok/s
+分别是多少?各自达到上限的百分之几?</p>
+
+<h2>3. 第三步:解释"量化不提速"之谜(阶段 2 之谜揭晓)</h2>
+<div class="box keypoint"><span class="bt">结论二:上限×4 ≠ 实测×4</span>
+roofline 给的是<strong>天花板</strong>。你的阶段 2 实测远低于天花板,
+说明实际时间被<strong>非权重读之外的东西</strong>占据:
+<ul style="margin-top:6px">
+  <li><strong>反量化/dequant kernel 开销</strong>:GPTQ 每层要先解包 4-bit → fp16
+      才能算(Triton backend,非 Marlin),这部分计算与访存都不便宜</li>
+  <li><strong>kernel 启动与调度</strong>:1B 模型每 token 要跑上百个小 kernel,
+      每个几 μs 启动开销,小 batch 下占比可观(4.5 讲 CUDA Graph 的靶子)</li>
+  <li><strong>低并行度</strong>:decode 逐 token,矩阵向量乘(GEMV)形状瘦长,
+      46 间教室喂不饱(1.3 讲"小矩阵"现象的重演)</li>
+  <li><strong>KV 与激活读</strong>:上下文越长占比越大</li>
+</ul>
+这些开销对 fp16 和 GPTQ <strong>同样存在</strong>。当"其他开销"主导总时间时,
+权重读从 2.48→0.62 GB 省下的那部分就显不出来——这就是你测到的"不提速"。
+</div>
+<div class="box analogy"><span class="bt">类比</span>
+搬家总时间 = 打包 + 路上 + 拆包。你换了辆快车(权重读×1/4),
+但打包(反量化)和拆包(调度/低并行度)时间没变甚至更久,
+总时长自然纹丝不动。<strong>要提速,先找到总时长里谁是大头</strong>——
+这正是 1.6 讲 profiler 的用武之地。
+</div>
+
+<h2>4. 第四步:batch 为什么能救吞吐(并且何时失效)</h2>
+<p>batch=B 时,<strong>权重只读一遍</strong>,同时服务 B 个序列的 B 个 token:</p>
+<pre class="diagram">batch=8 的 AI ≈ (2×1.24e9×8 FLOPs) / (2.48e9 + KV×8 Bytes) ≈ 16 FLOP/Byte
+→ 仍在 memory-bound 区,但权重读被 8 条序列摊薄
+→ 吞吐上限 ≈ 8 × 180 = 1440 tok/s(单条速度不变!)
+
+这就是你阶段 1.5 实测 349.6 tok/s(bs=8)背后的数学:349.6/1440 ≈ 24%
+——vLLM 把"打包拆包"开销压得很低,但仍远未跑满带宽。
+
+何时失效:batch 继续增大 → AI 抬向平衡点 81 → 撞上计算屋顶 → 吞吐饱和
+(而且显存先到顶:KV cache 随 batch 和上下文线性膨胀,2.2 讲精确计算)</pre>
+<div class="box keypoint"><span class="bt">结论三(全课程纲领)</span>
+<strong>decode 吞吐 ≈ min( 带宽 ÷ 每token字节数 × batch , 算力 )</strong>,
+且受 KV cache 显存约束。此后每一个推理优化都能塞回这个公式:
+量化=减字节;PagedAttention=让同样显存装更多 KV(更大 batch);
+投机采样=一次读权重换多个候选 token;PD 分离=prefill/decode 各自逼近各自的最优。
+</div>
+
+<h2>5. 预告:7B 与 A100(检验你是否真懂)</h2>
+<p>3.6 讲将在你的 3070 上跑 7B GPTQ,验证本讲推论:模型越大,权重读越是主导,
+量化的提速就越是"看得见"。现在先用 A100 手算热身(面试高频原题)。</p>
+
+<div class="quiz"><div class="qt">✅ 自测(面试向,点击揭晓)</div>
+  <details><summary>1. ★7B 模型 fp16,单卡 A100 80GB(带宽 ~2TB/s),decode 理论吞吐?</summary>
+    <div class="ans">7B 参数 × 2B = 14 GB 权重读/token。
+    上限 = 2000 GB/s ÷ 14 GB ≈ <strong>143 tok/s</strong>(batch=1)。
+    追问:换 4-bit?→ 14/4 ≈ 3.5 GB → ≈ 570 tok/s。
+    再追问:为什么 A100 上量化提速比 3070 上明显?→ 7B 的权重读占总时间比例
+    远大于 1B(数学同结论三),"减字节"直接兑现。</div></details>
+  <details><summary>2. 为什么"量化在小模型上不提速"不能外推到所有场景?</summary>
+    <div class="ans">不提速的原因是"其他开销主导",不是"量化没用"。开销占比随
+    模型变大而下降(权重读占比上升)、随 batch 增大而下降(摊薄)、
+    随 kernel 质量变化(Marlin vs Triton 反量化)。三个变量都 favorable 时,
+    量化提速就会显现——所以要报"在什么配置下"的数据,而不是给绝对结论。</div></details>
+  <details><summary>3. 既然 decode 是 memory-bound,那 prefill 呢?</summary>
+    <div class="ans">prefill 一次处理整段 prompt:每个权重被序列里<strong>所有 token 复用</strong>,
+    AI ≈ 2×batch_input_tokens 量级,迅速越过平衡点 → compute-bound。
+    这就是 2.1 讲"两阶段特性相反"的数学根源,也是 PD 分离(7.3)的动机。</div></details>
+</div>
+
+<div class="lab"><div class="lt">🔬 实践(约 60min)</div>
+<ul>
+  <li>写 <code>fundamentals/docs/decode-memory-bound-推导.md</code>:完整走一遍上面四步,
+      所有中间数字自己重算(不抄课件)</li>
+  <li>从 <code>code/quantization/logs/bench_throughput_*.md</code> 查出 fp16 与 GPTQ 的
+      实测 tok/s,填入对照表:实测 / 上限 = 效率%,并列出至少 3 条差距原因</li>
+  <li>用阶段 1.5 的 349.6 tok/s(bs=8)对照 8×180=1440 的上限,算效率并解释</li>
+  <li>手算面试题:你的 3070 跑 7B fp16 / 7B GPTQ 的 decode 上限各是多少?</li>
+  <li>git 提交。这份数字表将贯穿第 2/3 篇反复引用,值得写好</li>
+</ul>
+</div>
+
+<div class="actions" data-lesson="1.5">
+  <button class="mkbtn" data-f="t" onclick="mark('1.5','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('1.5','p')">标记实践完成</button>
+  <span class="hint">理论=能脱稿做自测题 1;实践=推导+对照表已入库</span>
+</div>
+
+<div class="nextnav">
+  <a href="p1-4.html"><span class="dir">← 上一讲</span>1.4 Roofline 模型</a>
+  <a class="nx" href="p1-6.html"><span class="dir">下一讲 →</span>1.6 Profiler 入门:nsys 与 torch profiler</a>
+</div>
+<footer>勾选与 <a href="../dashboard.html">进度台</a> 同步 · 卡住随时回对话提问</footer>
+</article>
+</div>
+<script src="course.js"></script>
+</body>
+</html>

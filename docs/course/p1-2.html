@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1.2 内存层级:寄存器→共享内存→L2→HBM — TinyLLM 课程</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav><div class="navin">
+  <a class="brand" href="index.html">🎓 TinyLLM 课程</a>
+  <span class="crumb">第1篇 · 2/7 · GPU 体系结构与测量</span>
+  <div class="grow"></div>
+  <a class="pg" href="p1-1.html">← 1.1</a>
+  <a class="pg" href="p1-3.html">1.3 →</a>
+</div></nav>
+<div class="wrap">
+<article>
+<h1>1.2 内存层级:寄存器 → 共享内存 → L2 → HBM</h1>
+<div class="metabox">
+  <span>理论 · 1.5h</span><span>先修:1.1</span>
+  <span>产出:并入 gpu-体系结构笔记.md</span>
+</div>
+<p class="lead">
+1.1 讲说过:GPU 只怕"闲着等数据"。这一讲把"数据从哪来、有多慢"讲清楚。
+结束后你会拿到一张<strong>3070 内存参数表</strong>——它就是 1.4 讲 roofline
+的纵轴来源,也是本课程反复查询的"常数表"。
+</p>
+
+<h2>1. 一图看懂四级内存</h2>
+<pre class="diagram">   快 ←───────────────────────────────────────────→ 慢
+   小 ←───────────────────────────────────────────→ 大
+
+ [寄存器]      [共享内存 SMEM]      [L2 缓存]         [HBM 显存]
+ 每人手里草稿   教室里的白板          楼层储物柜         城市总仓库
+ ~256KB/SM     ~128KB/SM(与L1分)   4MB 全卡共享       8GB 全卡共享
+ ~TB/s 级      ~13-20 TB/s(片上)   ~2-3 TB/s          448 GB/s ← 瓶颈!
+ 延迟≈即时      延迟 ~30 周期        延迟 ~200 周期     延迟 ~400-600 周期
+
+ 距离核心:  同一周期可用  |  同一SM内    |   全卡    |   芯片外(GDDR6 颗粒)</pre>
+<div class="box keypoint"><span class="bt">全课程最重要的一张数字对比</span>
+计算引擎(FP16 Tensor ≈ 40 TFLOPS)与最慢一级内存(448 GB/s)之间差了
+<strong>两个数量级</strong>。这意味着:只要数据要从 HBM 反复搬,小学生军团
+大部分时间在等卡车。<strong>所有 GPU 优化的本质,都是减少"去总仓库的次数"
+或"让卡车满载"。</strong>FlashAttention(第 4 篇)、PagedAttention(第 2 篇)、
+量化(第 3 篇)——你回头看,全是这句话的具体化。
+</div>
+
+<h2>2. 各级内存的真实角色</h2>
+<h3>寄存器:线程的私产</h3>
+<p>每个线程独占若干寄存器(3070 每间教室共 256KB,约 65536 个 32 位寄存器)。
+编译器自动分配;kernel 里用的"局部变量"大多在这里。
+<strong>寄存器不够用时会被"下放"到本地内存(实际走 L2/HBM),性能骤降</strong>
+——这就是 1.1 讲 occupancy 与寄存器互相挤压的原因。</p>
+<h3>共享内存:教室的白板(程序员可控的第一级)</h3>
+<p>同一 block(同一间教室)的所有线程共享,由<strong>程序员显式管理</strong>。
+第 4 篇分块 matmul 的核心动作就是:先把一块数据从 HBM 抄到白板,
+然后 128 个学生在白板上反复取用。Ampere 上 SMEM 与 L1 共享同一块 128KB
+物理 SRAM,可配置切分。</p>
+<h3>L2:楼层储物柜(硬件自动)</h3>
+<p>全卡共享 4MB,硬件自动缓存。你能做的主要是<strong>利用 locality</strong>:
+相邻 block 处理相邻数据时,后到的 block 能在 L2 命中。KV cache 的
+PagedAttention 设计也吃 L2 的红利。</p>
+<h3>HBM(实为 GDDR6):城市总仓库</h3>
+<p>8GB @ 448 GB/s。注意消费卡的"HBM"是口误,3070 用的是 GDDR6 颗粒,
+数据中心卡(H100)才是真 HBM(3 TB/s 级)。<strong>权重、KV cache、
+激活全部住在这里</strong>——1.5 讲要算的"每 token 从这里读多少字节",
+就是 decode 吞吐的总闸门。</p>
+
+<h2>3. 合并访存:让卡车满载</h2>
+<div class="box analogy"><span class="bt">类比</span>
+warp 的 32 个学生各自报了一个地址要取货。<br>
+<strong>连续地址</strong>(如线程 i 取 array[i],共 32×4B=128B 连续):
+卡车跑一趟全带回 → 1 次事务。<br>
+<strong>散乱地址</strong>(如 array[i*stride] 且 stride 很大):
+32 趟卡车,每趟只运 4B → 带宽利用率 1/32。<br>
+"合并访存(coalescing)"= 把 32 个人的需求拼成一整卡车。
+</div>
+<pre class="diagram">// 好的模式:线程 i 读 a[i]          →  128B 连续,1 事务,带宽满载
+// 坏的模式:线程 i 读 a[i*512]      →  每人隔 2KB,32 事务,利用率 ~3%
+// 经典技巧:矩阵按 tile 分块读入 SMEM(第4篇实践),天然连续</pre>
+<div class="box pitfall"><span class="bt">坑:矩阵"按行处理"未必合并</span>
+行主序下,同一 warp 沿<strong>行方向</strong>取数是连续的(好);
+沿<strong>列方向</strong>取数则步长=行宽(坏)。转置类的 kernel 性能差
+往往就是这个原因。第 4 篇写 Triton 时会用 tile 化解决。
+</div>
+
+<h2>4. 你的 3070 参数表(背下来 / 存进笔记)</h2>
+<table>
+<tr><th>层级</th><th>容量</th><th>带宽(量级)</th><th>延迟(周期)</th><th>谁管理</th></tr>
+<tr><td>寄存器</td><td>256KB/SM</td><td>~10+ TB/s</td><td>~0</td><td>编译器</td></tr>
+<tr><td>共享内存/L1</td><td>128KB/SM</td><td>~13-20 TB/s</td><td>~30</td><td><strong>程序员</strong></td></tr>
+<tr><td>L2</td><td>4MB</td><td>~2-3 TB/s</td><td>~200</td><td>硬件</td></tr>
+<tr><td>GDDR6</td><td>8GB</td><td><strong>448 GB/s(标称)</strong></td><td>~400-600</td><td>—</td></tr>
+<tr><td>FP16 Tensor</td><td>—</td><td>≈40 TFLOPS</td><td>—</td><td>—</td></tr>
+</table>
+<p>注:SMEM/L2 带宽无官方精确数字,量级正确即可;GDDR6 带宽为标称值,
+1.3 讲你将实测"有效带宽"并解释差距。</p>
+
+<div class="quiz"><div class="qt">✅ 自测(面试向,点击揭晓)</div>
+  <details><summary>1. 按延迟从小到大排序:寄存器、HBM、共享内存、L2</summary>
+    <div class="ans">寄存器(即时)→ 共享内存(~30 周期)→ L2(~200 周期)→ HBM(~400-600 周期)。
+    面试常考的是量级与"差多少":SMEM 比 HBM 快一个数量级以上,
+    这就是分块(tiling)存在的理由。</div></details>
+  <details><summary>2. 为什么说"所有 GPU 优化都是减少 HBM 访问或让其满载"?举两个例子</summary>
+    <div class="ans">因为计算:带宽 ≈ 40T:448G,差两个数量级,kernel 时间通常由访存主导。
+    例子:①FlashAttention——分块到 SMEM,避免物化 N×N 注意力矩阵(减少 HBM 读写量);
+    ②合并访存/tile 化——让每次 HBM 事务满载 128B(提高利用率)。
+    也可答量化(减少权重量→减少读字节)。</div></details>
+  <details><summary>3. 什么是 bank conflict?</summary>
+    <div class="ans">共享内存被切成 32 个 bank(可 32 路并行服务一个 warp)。
+    若 warp 内多个线程同时访问同一 bank 的不同地址,该 bank 内串行化,
+    SMEM 性能成倍下降。经典解法:padding(加一列错开地址)。</div></details>
+</div>
+
+<div class="lab"><div class="lt">🔬 实践(约 30min)</div>
+<ul>
+  <li>把上面参数表抄/复制进 <code>gpu-体系结构笔记.md</code>,标注"标称值,1.3 实测对照"</li>
+  <li>在笔记里补一张手绘的四级内存金字塔(容量/带宽/延迟三个维度标注)</li>
+  <li>思考题(写进笔记,不勾实践也行):阶段 2 的 GPTQ 推理里,哪些数据在 HBM?
+      哪些操作可能没让"卡车满载"?(开放题,1.6 讲用 profiler 回来验证你的猜想)</li>
+  <li>git 提交笔记更新</li>
+</ul>
+</div>
+
+<div class="actions" data-lesson="1.2">
+  <button class="mkbtn" data-f="t" onclick="mark('1.2','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('1.2','p')">标记实践完成</button>
+  <span class="hint">理论=能默画内存金字塔;实践=笔记已入库</span>
+</div>
+
+<div class="nextnav">
+  <a href="p1-1.html"><span class="dir">← 上一讲</span>1.1 GPU 计算模型</a>
+  <a class="nx" href="p1-3.html"><span class="dir">下一讲 →</span>1.3 实测你的 3070:带宽与算力</a>
+</div>
+<footer>勾选与 <a href="../dashboard.html">进度台</a> 同步 · 卡住随时回对话提问</footer>
+</article>
+</div>
+<script src="course.js"></script>
+</body>
+</html>

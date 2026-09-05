@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>1.1 GPU 计算模型:SM、warp 与 Tensor Core — TinyLLM 课程</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav><div class="navin">
+  <a class="brand" href="index.html">🎓 TinyLLM 课程</a>
+  <span class="crumb">第1篇 · 1/7 · GPU 体系结构与测量</span>
+  <div class="grow"></div>
+  <a class="pg" href="p0.html">← 第0篇</a>
+  <a class="pg" href="p1-2.html">1.2 →</a>
+</div></nav>
+<div class="wrap">
+<article>
+<h1>1.1 GPU 计算模型:SM、warp 与 Tensor Core</h1>
+<div class="metabox">
+  <span>理论 · 1.5h</span><span>先修:0.4</span>
+  <span>产出:fundamentals/docs/gpu-体系结构笔记.md</span>
+</div>
+<p class="lead">
+这是全课程的第一块地基。目标只有一个:此后你听到"SM""warp""Tensor Core"
+时,脑中是<strong>画面</strong>而不是名词。本讲用一个大类比建立这个画面,
+再用代码验证你这块 3070 的真实参数。
+</p>
+
+<h2>1. CPU 与 GPU:教授与小学生的分工</h2>
+<div class="box analogy"><span class="bt">核心类比</span>
+CPU = 几位<strong>教授</strong>(3070 时代的 CPU 约 12 个强核):每位都能解复杂问题,
+但人少,总吞吐有限。<br>
+GPU = 几千名<strong>小学生</strong>(3070 有 5888 个核心):每人只会算术,
+但架不住人多,且极其便宜、极其守纪律。<br>
+矩阵乘 = 海量独立的"乘了再加"——正是小学生军团的主场。
+</div>
+<p>关键推论:<strong>GPU 的性能来自并行,而并行的前提是任务可拆</strong>。
+LLM 推理里哪些部分可拆、哪些不可拆,决定了后面所有优化的天花板。</p>
+
+<h2>2. SM:教室,不是工人</h2>
+<p>5888 个核心不是散兵游勇,而是编成 <strong>46 个 SM(Streaming Multiprocessor)</strong>,
+每个 SM 管 128 个核心。</p>
+<div class="box analogy"><span class="bt">类比继续</span>
+SM = 一间<strong>教室</strong>,配一名班主任(调度器/取指单元)。
+3070 有 46 间教室,每间坐 128 个小学生。班主任说"大家算这道题的第 i 份",
+128 人同时动笔。教室之间独立干活,互不打扰。
+</div>
+<p>你写的 kernel(CUDA/Triton)会被切成大量 <strong>block</strong>,每个 block
+被派到某一间"教室"(SM)里执行;一个 SM 可同时接待多个 block
+(只要坐得下)。<strong>block 一旦分进教室就不挪窝</strong>——这是第 4 篇
+写 kernel 时的关键约束。</p>
+
+<h2>3. Warp:GPU 的最小执行单位(32 人一组)</h2>
+<p>教室里的 128 个学生不是各自为政,而是每 <strong>32 人编成一个 warp</strong>,
+全班 4 个 warp。<strong>warp 内 32 人永远执行同一条指令</strong>——这就是
+SIMT(Single Instruction, Multiple Threads)。</p>
+<pre class="diagram">block(128 线程)→ 4 个 warp:
+  warp0: 线程  0-31   ┐
+  warp1: 线程 32-63   ├─ 32 人锁步:同一周期,同一条指令,不同数据
+  warp2: 线程 64-95   │   (各人算各人的数据,但动作整齐划一)
+  warp3: 线程 96-127  ┘</pre>
+<div class="box pitfall"><span class="bt">坑:warp 分歧(warp divergence)</span>
+如果代码里有 <code>if (threadIdx.x &lt; 16) A(); else B();</code>,
+warp 里 16 人要走 A、16 人要走 B——但 32 人只能锁步!
+硬件的办法:<strong>两批人轮流执行</strong>,先 A(另 16 人空转),再 B(前 16 人空转)。
+一个分支,效率直接减半。这就是为什么 kernel 里要尽量避免 warp 内分支。
+</div>
+<div class="box keypoint"><span class="bt">为什么"锁步"反而快?</span>
+一套指令分发电路服务 32 份数据,硬件成本极低。牺牲灵活性(不能各干各的)
+换来了规模(5888 核塞进一颗 220W 的芯片)。GPU 的全部哲学就是这类
+"用约束换规模"的交易——后面的 Tensor Core、合并访存,全是同一哲学。
+</div>
+
+<h2>4. 延迟隐藏:为什么 GPU 不怕慢,只怕闲</h2>
+<p>小学生算一道题(比如等数据从仓库搬来)要等很久怎么办?班主任的绝招:
+<strong>每间教室同时挂着几十个 warp,谁的数据到了谁算,其他人等着不占算力</strong>。
+这叫延迟隐藏(latency hiding)。</p>
+<div class="box keypoint"><span class="bt">两个饱和,两种瓶颈(全课程最重要的二分法)</span>
+① <strong>计算饱和</strong>:所有小学生都在奋笔疾书 → compute-bound,快慢取决于 FLOPS;<br>
+② <strong>带宽饱和</strong>:学生都闲着,等仓库卡车(HBM)运数据 → memory-bound,
+快慢取决于内存带宽。<br>
+GPU 的设计目标是让 ① 先发生;但 LLM decode 恰恰是 ②(1.5 讲推导)。
+判断一个 workload 卡在哪,就是性能分析的全部起点。
+</div>
+
+<h2>5. Tensor Core:给矩阵乘专设的"算术速成班"</h2>
+<p>普通 CUDA 核心一次做一个 FMA(a×b+c)。Tensor Core 是专用电路,
+一次完成一个小矩阵块的乘加(Ampere:4×4×4 的混合精度矩阵乘累加),
+吞吐是同面积普通电路的数倍到十数倍。</p>
+<table>
+<tr><th></th><th>3070 实际</th><th>说明</th></tr>
+<tr><td>SM 数</td><td>46</td><td>46 间教室</td></tr>
+<tr><td>CUDA 核心</td><td>5888</td><td>128/SM</td></tr>
+<tr><td>FP32 算力</td><td>≈20.3 TFLOPS</td><td>普通小学生军团</td></tr>
+<tr><td>FP16 Tensor 算力</td><td>≈40 TFLOPS(密集)</td><td>速成班;训练/推理的主力</td></tr>
+<tr><td>显存带宽</td><td>448 GB/s</td><td>1.3 讲实测,1.4 讲做屋顶</td></tr>
+</table>
+<p>PyTorch 里 <code>torch.matmul</code> 的 fp16/bf16 输入自动走 Tensor Core——
+这不是开关,是形状和数据类型对上就发生。第 4 篇你自己写 Triton matmul 时
+会看到 <code>tl.dot</code> 同样映射到 Tensor Core。</p>
+
+<h2>6. 本讲地图(收尾)</h2>
+<pre class="diagram">Grid(整个 kernel 的所有线程)
+ └─ Block #0 ... Block #N        ← 每个 block 固定住进一间 SM
+     └─ Warp(32 线程锁步,SIMT)
+         └─ Thread(各自的数据)
+硬件侧:46 SM × (128 核 + Tensor Core + 寄存器 + 共享内存)
+性能侧:计算饱和(compute-bound) vs 供给饱和(memory-bound)← 下一讲的主角</pre>
+
+<div class="quiz"><div class="qt">✅ 自测(面试向,点击揭晓)</div>
+  <details><summary>1. 为什么 GPU 适合矩阵运算?</summary>
+    <div class="ans">矩阵乘可拆成海量独立的乘加(任务级并行),GPU 用几千个核心
+    + SIMT 批量执行 + Tensor Core 专用电路三级放大;CPU 强在复杂控制流,
+    算力密度反而低。补充:不可并行的部分(如自回归逐 token)GPU 无优势,
+    这正是 decode 阶段的困境。</div></details>
+  <details><summary>2. warp 分歧为什么会拖慢性能?如何缓解?</summary>
+    <div class="ans">warp 内 32 线程锁步,遇到分支只能串行执行两条路径,
+    未走的线程空转,吞吐按分支数成倍损失。缓解:让同一 warp 的数据走同一分支
+    (数据重排/排序)、把分支改成算术(如用 mask 乘法替代 if)、
+    或把分歧挪到 block 级(block 间独立,互不影响)。</div></details>
+  <details><summary>3. occupancy 是什么?高 occupancy 一定更快吗?</summary>
+    <div class="ans">SM 上活跃 warp 数 / 最大可容纳 warp 数。高 occupancy 提供
+    更多可切换的 warp 来隐藏访存延迟;但寄存器/共享内存用得多的 kernel
+    常主动压低 occupancy 换资源——"够用的 occupancy + 高效的访存模式"
+    才是常态,不是越高越好。</div></details>
+</div>
+
+<div class="lab"><div class="lt">🔬 实践(约 45min)</div>
+<ul>
+  <li>激活环境:<code>conda activate inference_opt</code>(WSL2)</li>
+  <li>新建 <code>code/optimization/fundamentals/</code> 目录</li>
+  <li>跑设备属性查询(下面代码),把输出粘进笔记</li>
+  <li>手绘(或用工具画)线程层级图:Grid→Block→Warp→Thread + 硬件侧 SM 对应关系</li>
+  <li>把上面 3070 规格表抄进笔记并标注来源(标称值,1.3 讲将实测对照)</li>
+  <li>产出物写入 <code>code/optimization/fundamentals/docs/gpu-体系结构笔记.md</code>,git 提交</li>
+</ul>
+</div>
+
+<pre><code># 查询你这块 3070 的真实参数
+import torch
+p = torch.cuda.get_device_properties(0)
+print(f"名称: {p.name}")
+print(f"SM 数: {p.multi_processor_count}")          # 预期 46
+print(f"核心数: {p.multi_processor_count * 128}")   # 3070: 128 核/SM
+print(f"显存: {p.total_memory/1024**3:.1f} GB")
+print(f"计算能力: {p.major}.{p.minor}")              # 预期 8.6 (Ampere)
+print(f"L2 缓存: {p.L2_cache_size/1024**2:.0f} MB") # 预期 4
+# warp 大小恒为 32(Ampere 及更早),写死在笔记里即可</code></pre>
+
+<div class="actions" data-lesson="1.1">
+  <button class="mkbtn" data-f="t" onclick="mark('1.1','t')">标记理论完成</button>
+  <button class="mkbtn" data-f="p" onclick="mark('1.1','p')">标记实践完成</button>
+  <span class="hint">理论=能给别人讲清楚 SM/warp/Tensor Core;实践=笔记已入库 git</span>
+</div>
+
+<div class="nextnav">
+  <a href="index.html"><span class="dir">← 返回</span>课件中心</a>
+  <a class="nx" href="p1-2.html"><span class="dir">下一讲 →</span>1.2 内存层级:寄存器→共享内存→L2→HBM</a>
+</div>
+<footer>勾选与 <a href="../dashboard.html">进度台</a> 同步 · 卡住随时回对话提问</footer>
+</article>
+</div>
+<script src="course.js"></script>
+</body>
+</html>

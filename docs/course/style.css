@@ -1,0 +1,111 @@
+/* TinyLLM 课程课件样式 —— 与 dashboard.html 同一视觉体系 */
+:root{
+  --bg:#f4f6f9; --card:#fff; --ink:#1e293b; --sub:#64748b;
+  --accent:#2563eb; --accent-soft:#dbeafe;
+  --done:#16a34a; --done-soft:#dcfce7;
+  --line:#e2e8f0; --chip:#f1f5f9;
+  --warn:#b45309; --warn-soft:#fef3c7;
+  --key:#7c3aed; --key-soft:#ede9fe;
+  --pit:#b91c1c; --pit-soft:#fee2e2;
+  --code-bg:#0f172a; --code-ink:#e2e8f0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--ink);line-height:1.75;font-size:15.5px}
+.wrap{max-width:860px;margin:0 auto;padding:0 20px 90px}
+/* 顶部导航 */
+nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.navin{max-width:860px;margin:0 auto;padding:10px 20px;display:flex;gap:10px;align-items:center}
+.navin .brand{font-weight:800;font-size:14px;color:var(--accent);text-decoration:none}
+.navin .crumb{font-size:12px;color:var(--sub)}
+.navin .grow{flex:1}
+.navin a.pg{font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--line);
+  border-radius:8px;padding:4px 12px;background:#fff}
+.navin a.pg:hover{border-color:var(--accent);color:var(--accent)}
+.navin .pg.off{opacity:.35;pointer-events:none}
+/* 文章 */
+article{padding-top:26px}
+h1{font-size:26px;line-height:1.35;border-bottom:2px solid var(--accent-soft);
+  padding-bottom:12px;margin-bottom:10px}
+.metabox{font-size:12.5px;color:var(--sub);display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.metabox span{background:var(--chip);border-radius:99px;padding:2px 10px}
+.lead{background:var(--accent-soft);border-left:4px solid var(--accent);
+  border-radius:0 10px 10px 0;padding:12px 16px;margin:16px 0;font-size:14.5px}
+h2{font-size:19px;margin:34px 0 10px;padding-left:10px;border-left:4px solid var(--accent)}
+h3{font-size:16px;margin:22px 0 8px;color:#0f172a}
+p{margin:10px 0}
+ul,ol{padding-left:24px;margin:10px 0}
+li{margin:5px 0}
+strong{color:#0f172a}
+/* 标注框 */
+.box{border-radius:10px;padding:12px 16px;margin:14px 0;font-size:14.5px}
+.box .bt{font-weight:800;font-size:12.5px;letter-spacing:.08em;display:block;margin-bottom:4px}
+.analogy{background:var(--warn-soft);border:1px solid #fde68a}
+.analogy .bt{color:var(--warn)}
+.keypoint{background:var(--key-soft);border:1px solid #ddd6fe}
+.keypoint .bt{color:var(--key)}
+.pitfall{background:var(--pit-soft);border:1px solid #fecaca}
+.pitfall .bt{color:var(--pit)}
+/* 代码 */
+pre{background:var(--code-bg);color:var(--code-ink);border-radius:10px;
+  padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.6;margin:12px 0}
+code{font-family:Consolas,"Courier New",monospace}
+p code,li code,td code{background:var(--chip);border-radius:5px;padding:1px 6px;
+  font-size:13px;color:#0f172a}
+pre code{background:none;padding:0}
+/* 表格 */
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px;background:#fff}
+th,td{border:1px solid var(--line);padding:7px 12px;text-align:left}
+th{background:var(--chip);font-weight:700}
+/* ASCII 图 */
+pre.diagram{background:#fff;border:1px dashed var(--line);color:#334155;
+  font-size:12.5px;line-height:1.45}
+/* 自测 */
+.quiz{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:14px 0}
+.quiz .qt{font-weight:800;color:var(--accent);font-size:13px;letter-spacing:.06em;margin-bottom:8px}
+.quiz details{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:8px 0;background:var(--chip)}
+.quiz details summary{cursor:pointer;font-weight:600;font-size:14px}
+.quiz details[open]{background:#fff}
+.quiz details .ans{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:14px}
+/* 实践清单 */
+.lab{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 18px;margin:16px 0}
+.lab .lt{font-weight:800;color:var(--done);font-size:13px;letter-spacing:.06em;margin-bottom:8px}
+.lab ul{list-style:none;padding-left:0}
+.lab li{padding-left:26px;position:relative}
+.lab li:before{content:"☐";position:absolute;left:2px;color:var(--done)}
+/* 完成勾选 */
+.actions{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:14px 18px;margin:26px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.actions .hint{font-size:12.5px;color:var(--sub);flex:1;min-width:200px}
+.mkbtn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 16px;
+  font-size:14px;cursor:pointer;color:var(--ink)}
+.mkbtn.on{background:var(--done-soft);border-color:var(--done);color:var(--done);font-weight:700}
+.mkbtn:hover{border-color:var(--done)}
+.nextnav{display:flex;justify-content:space-between;gap:10px;margin:30px 0 0}
+.nextnav a{flex:1;text-decoration:none;border:1px solid var(--line);border-radius:12px;
+  background:#fff;padding:12px 16px;font-size:13.5px;color:var(--ink)}
+.nextnav a:hover{border-color:var(--accent);color:var(--accent)}
+.nextnav a.nx{text-align:right}
+.nextnav .dir{display:block;font-size:11px;color:var(--sub)}
+/* 门户 */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:16px}
+.pcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+.pcard.avail{cursor:pointer;transition:transform .15s,box-shadow .15s}
+.pcard.avail:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(30,41,59,.08)}
+.pcard .st{font-size:11px;font-weight:700;border-radius:99px;padding:2px 10px;display:inline-block;margin-bottom:6px}
+.st.ok{background:var(--done-soft);color:var(--done)}
+.st.todo{background:var(--chip);color:var(--sub)}
+.pcard h3{margin:4px 0;font-size:15px}
+.pcard .goal{font-size:12.5px;color:var(--sub);min-height:38px}
+.pcard ul{list-style:none;padding:0;margin-top:8px}
+.pcard li{font-size:13px;padding:3px 0;border-bottom:1px dashed var(--chip)}
+.pcard li a{color:var(--ink);text-decoration:none}
+.pcard li a:hover{color:var(--accent)}
+.pcard li .ok{color:var(--done);font-weight:700}
+.pcard li .no{color:#cbd5e1}
+.bar{height:6px;background:var(--chip);border-radius:99px;overflow:hidden;margin-top:8px}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--done))}
+.pbar-txt{font-size:11px;color:var(--sub);margin-top:3px;text-align:right}
+footer{margin-top:50px;font-size:12px;color:var(--sub);text-align:center}
+footer a{color:var(--accent);text-decoration:none}

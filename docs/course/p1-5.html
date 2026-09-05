@@ -22,10 +22,9 @@
   <span>产出:fundamentals/docs/decode-memory-bound-推导.md</span>
 </div>
 <p class="lead">
-这是第 1 篇的顶点,也可能是整个课程最重要的一讲。你要用 1.2-1.4 的工具,
-<strong>亲手算出</strong>两件事:这块 3070 跑 LLaMA-1B 的 decode 吞吐上限;
-以及阶段 2 那个"量化不提速"的反直觉结论的数学真相。完成后,
-你对 LLM 推理的理解将从"经验"变成"可计算"。
+前面四讲攒下的工具,这一讲全部用上,算清两件事:这块 3070 跑 LLaMA-1B 的
+decode,吞吐上限到底是多少;阶段 2 那个"量化不提速"的反直觉结论,
+数学上是怎么回事。算完之后,LLM 推理性能对你来说就是一道算术题。
 </p>
 
 <h2>1. 第一步:decode 一个 token,到底要读多少字节?</h2>
@@ -43,9 +42,9 @@
 
 ⇒ AI = 2.48e9 FLOPs / 2.48e9 Bytes ≈ 2 FLOP/Byte(把 KV 计入还会更低)</pre>
 <div class="box keypoint"><span class="bt">结论一</span>
-LLM decode 的 AI ≈ 1~2 FLOP/Byte,而 3070 平衡点 ≈ 81。
-<strong>偏离平衡点 40-80 倍,是教科书级的 memory-bound。</strong>
-此时性能上限 = 带宽 × AI,与算力几乎无关。
+LLM decode 的 AI ≈ 1~2 FLOP/Byte,而 3070 平衡点 ≈ 81,
+离了 40-80 倍,memory-bound 得非常彻底。这种情况下性能上限 = 带宽 × AI,
+跟算力基本没关系。
 </div>
 
 <h2>2. 第二步:算吞吐上限(batch=1)</h2>
@@ -61,8 +60,8 @@ bench_throughput 的数字,填进你的推导笔记):fp16 和 GPTQ 的实测 tok
 
 <h2>3. 第三步:解释"量化不提速"之谜(阶段 2 之谜揭晓)</h2>
 <div class="box keypoint"><span class="bt">结论二:上限×4 ≠ 实测×4</span>
-roofline 给的是<strong>天花板</strong>。你的阶段 2 实测远低于天花板,
-说明实际时间被<strong>非权重读之外的东西</strong>占据:
+roofline 给的是天花板。你的阶段 2 实测远低于天花板,
+说明时间还花在了权重读取之外的地方:
 <ul style="margin-top:6px">
   <li><strong>反量化/dequant kernel 开销</strong>:GPTQ 每层要先解包 4-bit → fp16
       才能算(Triton backend,非 Marlin),这部分计算与访存都不便宜</li>
@@ -77,9 +76,9 @@ roofline 给的是<strong>天花板</strong>。你的阶段 2 实测远低于天
 </div>
 <div class="box analogy"><span class="bt">类比</span>
 搬家总时间 = 打包 + 路上 + 拆包。你换了辆快车(权重读×1/4),
-但打包(反量化)和拆包(调度/低并行度)时间没变甚至更久,
-总时长自然纹丝不动。<strong>要提速,先找到总时长里谁是大头</strong>——
-这正是 1.6 讲 profiler 的用武之地。
+但打包(反量化)和拆包(调度、并行度不足)没变甚至更久,
+总时长自然纹丝不动。要提速,先得知道总时长里谁占大头——
+这就是 1.6 讲 profiler 要干的事。
 </div>
 
 <h2>4. 第四步:batch 为什么能救吞吐(并且何时失效)</h2>
@@ -88,16 +87,17 @@ roofline 给的是<strong>天花板</strong>。你的阶段 2 实测远低于天
 → 仍在 memory-bound 区,但权重读被 8 条序列摊薄
 → 吞吐上限 ≈ 8 × 180 = 1440 tok/s(单条速度不变!)
 
-这就是你阶段 1.5 实测 349.6 tok/s(bs=8)背后的数学:349.6/1440 ≈ 24%
-——vLLM 把"打包拆包"开销压得很低,但仍远未跑满带宽。
+这就是你阶段 1.5 实测 349.6 tok/s(bs=8)背后的数学:349.6/1440 ≈ 24%,
+vLLM 已经把开销压得不错,但离跑满带宽还很远。
 
 何时失效:batch 继续增大 → AI 抬向平衡点 81 → 撞上计算屋顶 → 吞吐饱和
 (而且显存先到顶:KV cache 随 batch 和上下文线性膨胀,2.2 讲精确计算)</pre>
-<div class="box keypoint"><span class="bt">结论三(全课程纲领)</span>
-<strong>decode 吞吐 ≈ min( 带宽 ÷ 每token字节数 × batch , 算力 )</strong>,
-且受 KV cache 显存约束。此后每一个推理优化都能塞回这个公式:
-量化=减字节;PagedAttention=让同样显存装更多 KV(更大 batch);
-投机采样=一次读权重换多个候选 token;PD 分离=prefill/decode 各自逼近各自的最优。
+<div class="box keypoint"><span class="bt">结论三(后面每一篇都会用到)</span>
+decode 吞吐 ≈ min( 带宽 ÷ 每token字节数 × batch , 算力 ),还受 KV cache
+显存约束。把这个式子记住,后面每个优化技术都能对号入座:量化是减字节,
+PagedAttention 是让同样显存装下更多 KV(也就是更大 batch),
+投机采样是一次读权重换多个候选 token,PD 分离是让 prefill 和 decode
+各自往各自的上限靠。
 </div>
 
 <h2>5. 预告:7B 与 A100(检验你是否真懂)</h2>

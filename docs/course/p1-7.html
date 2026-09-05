@@ -22,10 +22,10 @@
   <span>产出:code/optimization/benchmarks/bench.py</span>
 </div>
 <p class="lead">
-第 1 篇收官,也为你造一把<strong>贯穿余下全课程的尺子</strong>。
-阶段 1.5/2 各写过基准脚本,但口径不一、不能互比;本讲把测量方法论
-固化成一个统一 harness——此后第 2/3/4 篇的所有实验,都用它出数,
-旧三件套退役。写完这一讲,你就完成了"会测"到"测得科学"的升级。
+第 1 篇到这里收官,顺手造一件后面一直要用的工具:统一基准 harness。
+阶段 1.5 和 2 各写过一套基准脚本,口径不一样,数字没法直接比。
+这一讲把测量方法固定进一个脚本,之后第 2/3/4 篇的实验都由它出数,
+旧三件套光荣退休。
 </p>
 
 <h2>1. 指标体系:先分清四个数</h2>
@@ -39,7 +39,7 @@
 <div class="box pitfall"><span class="bt">坑:只报平均值的基准都是耍流氓</span>
 并发下 TTFT 波动巨大(有人排队有人不排)。必须报 <strong>P50(中位)</strong> 和
 <strong>P99(长尾)</strong>:P99 是 SLO(服务等级目标)的守门员——
-"平均 200ms"掩盖的可能是"1% 的用户等 5 秒"。同时报<strong>重复次数与标准差</strong>,
+"平均 200ms"掩盖的可能是"1% 的用户等 5 秒"。同时报重复次数与标准差,
 单次测量不构成数据。
 </div>
 
@@ -97,7 +97,7 @@ def bench(engine, load: LoadSpec, repeats=3, warmup=2) -> list[Report]:
 
 <h2>4. 验收:用旧数据校准新尺子</h2>
 <p>新 harness 跑 transformers FP16、bs=1 与 bs=8,对照阶段 1.5 的
-349.6 tok/s:<strong>复现误差应在 ±10% 内</strong>(环境差异带来的漂移)。
+349.6 tok/s:复现误差应在 ±10% 内(环境差异带来的漂移)。
 校准通过后,1.5 讲推导笔记里的"实测/上限"表格用新数据刷新一遍——
 这份表就是你第 2 篇博客的第一手素材。</p>
 
@@ -111,7 +111,7 @@ def bench(engine, load: LoadSpec, repeats=3, warmup=2) -> list[Report]:
   <details><summary>2. 为什么严肃评测用 open loop 而不是 closed loop?</summary>
     <div class="ans">closed loop 固定并发,请求完成立即补位,系统永远"被喂饱",
     测的是<strong>饱和吞吐</strong>,排队被隐藏;open loop 按到达率施压,
-    过载时队列堆积、P99 爆炸,能测出<strong>系统真实容量边界</strong>(goodput)。
+    过载时队列堆积、P99 爆炸,能测出系统的真实容量边界(goodput)。
     报告不写负载模型,数字无法解读。</div></details>
   <details><summary>3. P99 为什么比平均值重要?什么时候反而看 P50?</summary>
     <div class="ans">SLO 通常按长尾定义(99% 用户 TTFT&lt;500ms),平均数被
@@ -132,11 +132,11 @@ def bench(engine, load: LoadSpec, repeats=3, warmup=2) -> list[Report]:
 </ul>
 </div>
 
-<div class="box analogy"><span class="bt">收官感言</span>
-第 1 篇给你的不是知识清单,而是一套<strong>裁判系统</strong>:roofline 判
-"该多快",profiler 判"为什么没这么快",harness 判"改了之后到底快没快"。
-带着这套系统进第 2 篇,vLLM 的每个机制你都能问出那句最锋利的话:
-<strong>"它在我的 3070 上,兑现了带宽的百分之几?"</strong>
+<div class="box analogy"><span class="bt">第 1 篇小结</span>
+回头看,第 1 篇留给你的其实是三件判断工具:roofline 算"应该多快",
+profiler 查"为什么没这么快",harness 验证"改完到底快没快"。
+带着它们进第 2 篇,碰到 vLLM 的任何一个机制,都可以问同一句话:
+它在我的 3070 上,把带宽用足了百分之几?
 </div>
 
 <div class="actions" data-lesson="1.7">

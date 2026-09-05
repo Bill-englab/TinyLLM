@@ -22,9 +22,9 @@
   <span>产出:fundamentals/logs/nsys-初体验.md</span>
 </div>
 <p class="lead">
-1.5 讲算出了天花板,并猜测了"差距来自哪些开销"。profiler 就是<strong>裁决者</strong>:
-它把执行过程拍成"时间线胶片",时间花在哪个 kernel、卡在哪次同步、
-空隙有多大,一目了然。工具就两个:nsys(看全局)和 torch profiler(嵌在代码里看细节)。
+1.5 讲算出了天花板,也猜了差距从哪来。猜得对不对,交给 profiler 裁决:
+它把程序的执行过程拍成一条时间线,哪个 kernel 占了多长时间、中间空了多少,
+都摆在明面上。工具就两个:nsys 看全局,torch profiler 嵌在代码里看细节。
 </p>
 
 <h2>1. 先认清工具箱(以及 WSL2 的限制)</h2>
@@ -36,9 +36,9 @@
 <tr><td>nvidia-smi</td><td>宏观利用率/显存/功耗</td><td>✅ 但"GPU 利用率 100%"不代表满载(见下)</td></tr>
 </table>
 <div class="box pitfall"><span class="bt">坑:别信 nvidia-smi 的"GPU-Util"</span>
-它统计的是"<strong>有 kernel 在跑的时间占比</strong>",不是算力利用率——
+它统计的是"有 kernel 在跑的时间占比",不是算力利用率——
 一群极低效的小 kernel 也能让它显示 100%。判断真实效率要靠 roofline(理论)
-+ profiler(实证)。<strong>报"GPU 利用率"当业绩,是 infra 面试的减分项。</strong>
++ profiler(实证)。报"GPU 利用率"当业绩,是 infra 面试的减分项。
 </div>
 
 <h2>2. torch profiler:五分钟上手(先用这个)</h2>
@@ -91,11 +91,10 @@ GPU 行:      ▓▓▓  ▓▓▓   ▓▓▓  ▓▓▓   ▓▓▓           
 </div>
 
 <h2>4. 工作方法:理论 → 假设 → 实证</h2>
-<div class="box keypoint"><span class="bt">本课程固定的分析姿势</span>
-1)先用 1.4/1.5 的公式算理论上限;2)对比实测提出假设
-("我猜差距主要来自 X");3)用 profiler 验证/推翻;4)结论写进日志。
-<strong>顺序不能反</strong>——没有假设的 profile 是"看热闹",
-带着假设的 profile 才是"做实验"。
+<div class="box keypoint"><span class="bt">本课程固定的分析流程</span>
+1)先用 1.4/1.5 的公式算理论上限;2)对比实测,提出假设("我猜差距主要来自 X");
+3)用 profiler 验证或推翻;4)结论写进日志。顺序别反——不带假设去看
+profile,多半是看热闹;带着假设去,才叫做实验。
 </div>
 
 <div class="quiz"><div class="qt">✅ 自测(面试向,点击揭晓)</div>

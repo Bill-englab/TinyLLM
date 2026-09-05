@@ -46,8 +46,8 @@ AI = FLOPs / Bytes = 每从 HBM 搬 1 字节,做多少次浮点运算。<br>
 <div class="box keypoint"><span class="bt">Roofline 定理</span>
 <strong>性能上限 = min( 峰值算力, 带宽 × AI )</strong><br>
 用你 1.3 讲的实测值代:上限 = min( ~30 TFLOPS(fp16 实测), ~370 GB/s(实测) × AI )<br>
-两条线的交点叫<strong>平衡点(ridge point)</strong>:AI 低于它,memory-bound;
-高于它,compute-bound。
+两条线的交点叫平衡点(ridge point,脊点):AI 在它左边,memory-bound;
+在它右边,compute-bound。
 </div>
 <pre class="diagram">性能上限(TFLOPS, log 轴)
  30 ┤              ╭━━━━━━━━━━━ 计算屋顶(实测算力)
@@ -73,9 +73,9 @@ AI = FLOPs / Bytes = 每从 HBM 搬 1 字节,做多少次浮点运算。<br>
   <li>给对策:memory-bound → 减字节(量化!)或提复用(tiling);compute-bound → 换更快的算法或用 Tensor Core</li>
 </ol>
 <div class="box analogy"><span class="bt">类比</span>
-roofline = 一张"公路限速图":算力屋顶是发动机极速,带宽屋顶是道路限速。
-AI 是你的车重排量比——轻载小车(AI 低)先撞道路限速,重卡满载(AI 高)
-先撞发动机极限。优化前先问:我到底被哪个卡住?
+把 roofline 想成一张行车图:算力屋顶是发动机极速,带宽屋顶是道路限速。
+AI 低的任务像空车,先撞道路限速;AI 高的任务像满载重卡,先撞发动机极速。
+优化之前,先弄清自己被哪一个卡住。
 </div>
 <div class="box pitfall"><span class="bt">常见误区</span>
 ① AI 的 Bytes 只算 HBM 流量(寄存器/SMEM 内的复用不算);
@@ -98,7 +98,7 @@ AI 是你的车重排量比——轻载小车(AI 低)先撞道路限速,重卡�
     也是 GPU 上算子融合(tile 内复用)的动机。</div></details>
   <details><summary>3. 一个 kernel 实测 5 TFLOPS,roofline 上限是 25 TFLOPS。
       你的第一反应是什么?</summary>
-    <div class="ans">不是"优化计算",而是先问"为什么只有上限的 20%"——
+    <div class="ans">先别急着优化计算,问一句:为什么只有上限的 20%?
     可能是访存模式差(未合并)、并行度不足、启动开销大、warp 分歧等。
     下一步拿 profiler(1.6 讲)看时间线定位,而不是急着改算法。</div></details>
 </div>

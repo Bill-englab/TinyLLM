@@ -32,6 +32,8 @@ context: |
     - 文档四层体系: 计划 docs/plans/ · 进度 docs/progress/ ·
       说明 docs/*.md + code/<stage>/docs/ · 规格 openspec/
     - 文档语言: 中文;代码注释: 中文为主
+    - 面向读者的中文叙述(课件/博客/README 散文段)遵循
+      skill/humanizer-zh 的去 AI 味规范(删金句/破排比/少加粗/有节奏)
     - 提交信息: 中文,conventional commits 风格(chore/docs/feat/...)
     - 模型文件不入库(code/model/ 已 gitignore),获取方式见 code/model/README.md
     - 实验日志(md)入库保留,大文件与二进制产物不入库

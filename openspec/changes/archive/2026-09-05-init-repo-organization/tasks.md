@@ -28,5 +28,5 @@
 
 - [x] 5.1 `openspec validate init-repo-organization` 通过
 - [x] 5.2 链接检查(README/快速入门/结构说明/环境总结引用的相对路径均存在)
-- [ ] 5.3 分主题提交并推送 main 到 GitHub
-- [ ] 5.4 归档本 change
+- [x] 5.3 分主题提交并推送 main 到 GitHub
+- [x] 5.4 归档本 change

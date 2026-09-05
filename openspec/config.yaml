@@ -27,6 +27,8 @@ context: |
     - 目录规范见 skill/stage-organization/references/directory-structure.md
     - 阶段完成必须产出: 技术博客(docs/NN-主题篇.md) + 学习记录 + 检查清单,
       并更新 docs/progress/PROGRESS.md 与 docs/INDEX.md
+    - 课件站 docs/course/(门户+逐讲课件,双击离线可用),与 dashboard
+      共享 localStorage 进度;滚动备课:学第 N 篇时备第 N+1 篇
     - 文档四层体系: 计划 docs/plans/ · 进度 docs/progress/ ·
       说明 docs/*.md + code/<stage>/docs/ · 规格 openspec/
     - 文档语言: 中文;代码注释: 中文为主
